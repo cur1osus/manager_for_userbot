@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import signal
+
 from config import BOT_NAME
 
 logger = logging.getLogger(__name__)
@@ -66,4 +67,27 @@ async def stop_bot(phone: str, path_to_folder: str):
     except PermissionError:
         logger.info("Нет прав на завершение процесса")
 
-    os.remove(path_pid)
+    await delete_files_by_name(
+        path_to_folder, [f"{phone}_session.session", f"{phone}{PID_FILE}"]
+    )
+
+
+async def delete_files_by_name(folder_path, filenames):
+    """
+    Удаляет файлы с указанными именами в папке.
+
+    :param folder_path: Путь к папке.
+    :param filenames: Список имён файлов для удаления (например, ['file1.txt', 'temp.log']).
+    """
+    if not os.path.exists(folder_path):
+        logger.info(f"Папка {folder_path} не существует.")
+        return
+
+    for filename in os.listdir(folder_path):
+        file_path = os.path.join(folder_path, filename)
+        if os.path.isfile(file_path) and filename in filenames:
+            try:
+                os.remove(file_path)
+                logger.info(f"Удален файл: {file_path}")
+            except Exception as e:
+                logger.info(f"Не удалось удалить {file_path}: {e}")
