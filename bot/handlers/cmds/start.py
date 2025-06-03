@@ -237,8 +237,7 @@ async def restart_bot(
         or isinstance(query.message, InaccessibleMessage)
     ):
         return
-
-    bot_id = query.data.split(":")[1]
+    bot_id = (await state.get_data())["bot_id"]
     async with sessionmaker() as session:
         bot: Bot = await session.get(Bot, bot_id)
         if not bot:
