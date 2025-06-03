@@ -224,6 +224,34 @@ async def manage_bot(
     )
 
 
+@router.callback_query(F.data == "restart_bot")
+async def restart_bot(
+    query: CallbackQuery,
+    redis: Redis,
+    state: FSMContext,
+    sessionmaker: async_sessionmaker,
+):
+    if (
+        not query.data
+        or not query.message
+        or isinstance(query.message, InaccessibleMessage)
+    ):
+        return
+
+    bot_id = query.data.split(":")[1]
+    async with sessionmaker() as session:
+        bot: Bot = await session.get(Bot, bot_id)
+        if not bot:
+            return
+        phone = bot.name
+    await stop_bot(phone, path_to_folder)
+
+    await start_bot(phone, path_to_folder)
+    await query.message.edit_text(
+        "Бот подключен и запущен", reply_markup=await ik_main_menu()
+    )
+
+
 @router.callback_query(F.data == "delete")
 async def delete_bot(
     query: CallbackQuery,
