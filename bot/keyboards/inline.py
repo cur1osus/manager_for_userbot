@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 async def ik_main_menu() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="Боты", callback_data="bots")
-    builder.button(text="Добавить бота", callback_data="add_bot")
+    builder.button(text="Добавить бота", callback_data="add_new_bot")
     builder.button(text="Игноры", callback_data="info:ignore")
     builder.button(text="Баны", callback_data="info:ban")
     builder.button(text="Тригеры", callback_data="info:keyword")
