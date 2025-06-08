@@ -5,7 +5,13 @@ from typing import TYPE_CHECKING, Any, Final, TypeVar
 
 from aiogram import BaseMiddleware
 from aiogram.dispatcher.flags import get_flag
-from aiogram.types import CallbackQuery, ChatMemberUpdated, TelegramObject, Update, User
+from aiogram.types import (
+    CallbackQuery,
+    ChatMemberUpdated,
+    TelegramObject,
+    Update,
+    User,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -13,7 +19,7 @@ if TYPE_CHECKING:
     from redis.asyncio.client import Redis
     from redis.typing import ExpiryT
 
-DEFAULT_RATE_LIMIT: Final[int] = 1000  # milliseconds cooldown
+DEFAULT_RATE_LIMIT: Final[int] = 250  # milliseconds cooldown
 KeyValueT = TypeVar("KeyValueT", bound=int | str)
 
 

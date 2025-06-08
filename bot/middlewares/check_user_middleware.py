@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Final, cast
+from typing import TYPE_CHECKING, Any, Final
 
 from aiogram import BaseMiddleware
-from aiogram.types import Message, TelegramObject, Update, User
+from aiogram.types import TelegramObject, Update, User
 
 from bot.db.func import _get_user_manager_model
 

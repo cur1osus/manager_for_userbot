@@ -1,1 +1,9 @@
-from .models import User, MessageToAnswer, MonitoringChat, BannedUser, IgnoredWord, Keyword, UserManager
+from .models import (
+    UserAnalyzed,
+    MessageToAnswer,
+    MonitoringChat,
+    BannedUser,
+    IgnoredWord,
+    KeyWord,
+    UserManager,
+)

@@ -13,16 +13,16 @@ class MonitoringChat(Base):
     id_chat: Mapped[str] = mapped_column(String(50), unique=True)
 
 
-class Keyword(Base):
+class KeyWord(Base):
     __tablename__ = "keywords"
 
-    word: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
+    word: Mapped[str] = mapped_column(String(500), unique=True, nullable=False)
 
 
 class IgnoredWord(Base):
     __tablename__ = "ignored_words"
 
-    word: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
+    word: Mapped[str] = mapped_column(String(500), unique=True, nullable=False)
 
 
 class MessageToAnswer(Base):
@@ -34,18 +34,19 @@ class MessageToAnswer(Base):
 class BannedUser(Base):
     __tablename__ = "banned_users"
 
+    id_user: Mapped[int] = mapped_column(BigInteger, unique=True)
     username: Mapped[str] = mapped_column(String(50), nullable=True)
     is_banned: Mapped[bool] = mapped_column(default=False)
 
 
-class User(Base):
-    __tablename__ = "users"
+class UserAnalyzed(Base):
+    __tablename__ = "users_analyzed"
 
     id_user: Mapped[int] = mapped_column(BigInteger, unique=True)
     username: Mapped[str] = mapped_column(String(50), nullable=True)
     message_id: Mapped[str] = mapped_column(String(50), nullable=True)
     chat_id: Mapped[str] = mapped_column(String(50), nullable=True)
-    additional_message: Mapped[str] = mapped_column(String(500))
+    additional_message: Mapped[str] = mapped_column(String(1000))
     sended: Mapped[bool] = mapped_column(default=False)
 
 
@@ -59,7 +60,9 @@ class UserManager(Base):
 class Bot(Base):
     __tablename__ = "bots"
 
-    name: Mapped[str] = mapped_column(String(50))
+    name: Mapped[str] = mapped_column(String(50), nullable=True)
+    phone: Mapped[str] = mapped_column(String(50), unique=True)
     api_id: Mapped[int] = mapped_column(BigInteger, unique=True)
     api_hash: Mapped[str] = mapped_column(String(100))
     path_session: Mapped[str] = mapped_column(String(100))
+    is_started: Mapped[bool] = mapped_column(default=False)

@@ -1,9 +1,11 @@
 from aiogram import Router
 
-from . import  cmds
+from . import cmds, actions, reg_userbot
 
 router = Router()
 
 router.include_routers(
-    cmds.router
+    cmds.router,
+    actions.router,
+    reg_userbot.router,
 )

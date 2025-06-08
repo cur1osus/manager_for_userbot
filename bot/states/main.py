@@ -7,5 +7,6 @@ class UserState(StatesGroup):
     enter_phone = State()
     enter_code = State()
     enter_password = State()
+    action = State()
 
 
