@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from redis.asyncio.client import Redis
     from redis.typing import ExpiryT
 
-DEFAULT_RATE_LIMIT: Final[int] = 250  # milliseconds cooldown
+DEFAULT_RATE_LIMIT: Final[int] = 5  # milliseconds cooldown
 KeyValueT = TypeVar("KeyValueT", bound=int | str)
 
 

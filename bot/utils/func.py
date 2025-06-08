@@ -79,24 +79,49 @@ class Function:
         data_to_add: list[str],
         model_db: type[Base],
         name_value: str,
+        **kwargs,
     ):
-        _ = await Function.get_data_from_db(sessionmaker, model_db, name_value)
+        if kwargs:
+            where: list = []
+            for i in kwargs:
+                where.extend((i, kwargs[i]))
+            _ = await Function.get_data_from_db(
+                sessionmaker, model_db, name_value, where
+            )
+        else:
+            _ = await Function.get_data_from_db(sessionmaker, model_db, name_value)
+
         data_to_add = await Function.collapse_repeated_data(_, data_to_add)
         async with sessionmaker() as session:
             for data in data_to_add:
-                _ = {name_value: data}
+                _ = {name_value: data} | kwargs
                 await session.execute(insert(model_db).values(**_))
             await session.commit()
 
     @staticmethod
     async def get_data_from_db(
-        sessionmaker: async_sessionmaker, model_db: type[Base], name_value: str
+        sessionmaker: async_sessionmaker,
+        model_db: type[Base],
+        name_value: str,
+        where: list | None = None,
     ) -> list[str]:
         async with sessionmaker() as session:
-            return [
-                getattr(i, name_value)
-                for i in (await session.scalars(select(model_db))).all()
-            ]
+            if where:
+                return [
+                    getattr(i, name_value)
+                    for i in (
+                        await session.scalars(
+                            select(model_db)
+                            .where(getattr(model_db, where[0]) == where[1])
+                            .order_by(model_db.id)
+                        )
+                    ).all()
+                ]
+            else:
+                return [
+                    getattr(i, name_value)
+                    for i in (await session.scalars(select(model_db))).all()
+                ]
 
     @staticmethod
     async def collapse_repeated_data(
@@ -113,4 +138,5 @@ class Function:
         s = "".join(f"{ind + 1}) {i}{sep}" for ind, i in enumerate(data))
         if len(s) > 4096:
             s = s[4096:]
-        return f"... {s}"
+            s = f"... {s}"
+        return s
