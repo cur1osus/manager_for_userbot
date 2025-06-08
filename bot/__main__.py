@@ -18,7 +18,6 @@ from aiogram.fsm.storage.redis import RedisStorage
 from bot import errors, handlers
 from bot.db.sqlite.base import close_db, create_db_session_pool, init_db
 from bot.middlewares.check_user_middleware import CheckUserMiddleware
-from bot.middlewares.throttling_middleware import ThrottlingMiddleware
 from bot.settings import Settings
 
 if TYPE_CHECKING:
@@ -43,9 +42,6 @@ async def startup(
     dispatcher.workflow_data.update(
         {"sessionmaker": db_session, "db_session_closer": partial(close_db, engine)}
     )
-
-    dispatcher.message.middleware(ThrottlingMiddleware(redis))
-    dispatcher.callback_query.middleware(ThrottlingMiddleware(redis))
 
     dispatcher.update.outer_middleware(CheckUserMiddleware())
 
