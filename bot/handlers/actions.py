@@ -331,7 +331,7 @@ async def delete(
     ):
         return
     type_data = (await state.get_data())["type_data"]
-    kwargs_for_keyboard: dict = {}
+    kwargs_for_keyboard: dict = {"back_to": "base_add_or_delete"}
     ids = []
     match type_data:
         case "answer":
@@ -343,7 +343,7 @@ async def delete(
             ids = await fn.get_data_from_db(
                 sessionmaker, MonitoringChat, "id", ["bot_id", bot_id]
             )
-            kwargs_for_keyboard["back_to"] = "add_or_delete"
+            kwargs_for_keyboard["back_to"] = "chat_add_or_delete"
         case "ignore":
             ids = await fn.get_data_from_db(sessionmaker, IgnoredWord, "id")
         case "keyword":
@@ -490,10 +490,12 @@ async def back_action(
             )
             await state.clear()
             await state.update_data(data)
-        case "add_or_delete":
+        case "chat_add_or_delete":
             await query.message.edit_reply_markup(
                 reply_markup=await ik_add_or_delete(back_to="action_with_bot"),
             )
+        case "base_add_or_delete":
+            await query.message.edit_reply_markup(reply_markup=await ik_add_or_delete())
 
 
 @router.callback_query(F.data == "bots")
