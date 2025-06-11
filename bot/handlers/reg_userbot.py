@@ -9,11 +9,14 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InaccessibleMessage
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from bot.db.sqlite.models import Bot, UserManager
-from bot.keyboards.inline import ik_available_bots
+from bot.keyboards.reply import rk_cancel
+from bot.keyboards.inline import ik_main_menu
+from bot.db.mysql.models import Bot
 from bot.states import UserState
 from bot.utils.func import Function as fn
 from bot.utils.manager import start_bot
+from aiogram.fsm.state import any_state
+from aiogram.types.reply_keyboard_remove import ReplyKeyboardRemove
 
 if TYPE_CHECKING:
     from aiogram.types import Message
@@ -24,27 +27,21 @@ logger = logging.getLogger(__name__)
 path_to_folder = "sessions"
 
 
-@router.callback_query(F.data == "bots")
-async def show_bots(
-    query: CallbackQuery,
-    redis: Redis,
-    user: UserManager | None,
-    sessionmaker: async_sessionmaker,
+@router.message(any_state, F.text == "Отмена")
+async def cancel_reg(
+    message: Message, redis: Redis, state: FSMContext, sessionmaker: async_sessionmaker
 ):
-    bots_data = await fn.get_available_bots(sessionmaker)
-    if not query.message or isinstance(query.message, InaccessibleMessage):
-        return
-    await query.message.edit_text(
-        "Боты",
-        reply_markup=await ik_available_bots(bots_data),
-    )
+    await state.clear()
+    await message.answer("Добавление бота отменено", reply_markup=ReplyKeyboardRemove())
+    await message.answer("Главное меню", reply_markup=await ik_main_menu())
 
 
 @router.callback_query(F.data == "add_new_bot")
 async def process_add_new_bot(query: CallbackQuery, redis: Redis, state: FSMContext):
     if not query.message or isinstance(query.message, InaccessibleMessage):
         return
-    await query.message.edit_text("Введите api_id", reply_markup=None)
+    await query.message.delete()
+    await query.message.answer("Введите api_id", reply_markup=await rk_cancel())
     await state.set_state(UserState.enter_api_id)
 
 
@@ -176,5 +173,5 @@ async def process_enter_password(
         )
         await session.commit()
     await start_bot(phone, path_to_folder)
-    await message.answer("Бот подключен и запущен", reply_markup=None)
+    await message.answer("Бот подключен и запущен", reply_markup=ReplyKeyboardRemove())
     await state.clear()

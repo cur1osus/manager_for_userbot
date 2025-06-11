@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from telethon import TelegramClient  # type: ignore
 from telethon.errors import SessionPasswordNeededError  # type: ignore
 
-from bot.db.sqlite.models import Base, Bot
+from bot.db.mysql.models import Base, Bot
 
 
 @dataclasses.dataclass

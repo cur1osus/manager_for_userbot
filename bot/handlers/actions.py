@@ -9,13 +9,14 @@ from aiogram.types import CallbackQuery, InaccessibleMessage, Message
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from bot.db.sqlite.models import (
+from bot.db.mysql.models import (
     BannedUser,
     Bot,
     IgnoredWord,
     KeyWord,
     MessageToAnswer,
     MonitoringChat,
+    UserManager,
 )
 from bot.keyboards.inline import (
     ik_action_with_bot,
@@ -23,7 +24,8 @@ from bot.keyboards.inline import (
     ik_available_bots,
     ik_cancel_action,
     ik_main_menu,
-    ik_num_matrix,
+    ik_num_matrix_del,
+    ik_num_matrix_users,
 )
 from bot.states import UserState
 from bot.utils.func import Function as fn
@@ -55,7 +57,7 @@ async def manage_bot(
     await state.update_data(bot_id=bot_id)
     await query.message.edit_text(
         "Выберите действие",
-        reply_markup=await ik_action_with_bot(),
+        reply_markup=await ik_action_with_bot(back_to="bots"),
     )
 
 
@@ -200,13 +202,10 @@ async def info(
                 "id_chat",
                 ["bot_id", bot_id],
             )
-            if data:
-                data = await fn.watch_data(data, sep)
-            else:
-                data = "Чаты отсутствуют"  # type: ignore
+            data = await fn.watch_data(data, sep) if data else "Чаты отсутствуют"  # type: ignore
             await query.message.edit_text(
                 f"Мониторинг чатов:\n{data}",
-                reply_markup=await ik_add_or_delete(additional_callback="chat"),
+                reply_markup=await ik_add_or_delete(back_to="action_with_bot"),  # type: ignore
             )
         case "keyword":
             data = await fn.get_data_from_db(sessionmaker, KeyWord, "word")
@@ -259,9 +258,7 @@ async def add(
         case "chat":
             await query.message.edit_text(
                 "Введите chat_id(-s)",
-                reply_markup=await ik_cancel_action(
-                    additional_callback="chat_add_or_delete"
-                ),
+                reply_markup=await ik_cancel_action(back_to="add_or_delete"),
             )
         case "ignore":
             await query.message.edit_text(
@@ -286,7 +283,7 @@ async def processing_message_to_add(
         return
     data_to_add = [i.strip() for i in message.text.split(sep)]
     type_data = (await state.get_data())["type_data"]
-    kwargs_for_keyboard = {}
+    kwargs_for_keyboard: dict = {}
     match type_data:
         case "answer":
             await fn.add_data_to_db(
@@ -306,8 +303,8 @@ async def processing_message_to_add(
                 "id_chat",
                 bot_id=bot_id,
             )
+            kwargs_for_keyboard["back_to"] = "action_with_bot"
             data = await fn.get_data_from_db(sessionmaker, MonitoringChat, "id_chat")
-            kwargs_for_keyboard = {"additional_callback": "chat"}
         case "ignore":
             await fn.add_data_to_db(sessionmaker, data_to_add, IgnoredWord, "word")
             data = await fn.get_data_from_db(sessionmaker, IgnoredWord, "word")
@@ -334,6 +331,7 @@ async def delete(
     ):
         return
     type_data = (await state.get_data())["type_data"]
+    kwargs_for_keyboard: dict = {}
     ids = []
     match type_data:
         case "answer":
@@ -345,13 +343,16 @@ async def delete(
             ids = await fn.get_data_from_db(
                 sessionmaker, MonitoringChat, "id", ["bot_id", bot_id]
             )
+            kwargs_for_keyboard["back_to"] = "add_or_delete"
         case "ignore":
             ids = await fn.get_data_from_db(sessionmaker, IgnoredWord, "id")
         case "keyword":
             ids = await fn.get_data_from_db(sessionmaker, KeyWord, "id")
         case _:
             return
-    await query.message.edit_reply_markup(reply_markup=await ik_num_matrix(ids))
+    await query.message.edit_reply_markup(
+        reply_markup=await ik_num_matrix_del(ids, **kwargs_for_keyboard)
+    )
     await state.update_data(ids=ids)
     await state.set_state(UserState.action)
 
@@ -398,12 +399,13 @@ async def del_by_id(
     await delete(query, redis, state, sessionmaker)
 
 
-@router.callback_query(UserState.action, F.data == "cancel")
-async def cancel_action(
+@router.callback_query(F.data == "users_per_minute")
+async def users_per_minute(
     query: CallbackQuery,
     redis: Redis,
     state: FSMContext,
     sessionmaker: async_sessionmaker,
+    user: UserManager,
 ):
     if (
         not query.data
@@ -411,20 +413,19 @@ async def cancel_action(
         or isinstance(query.message, InaccessibleMessage)
     ):
         return
-    data = await state.get_data()
     await query.message.edit_text(
-        "Выберите действие", reply_markup=await ik_main_menu()
+        text="Выбери пропускную способность:",
+        reply_markup=await ik_num_matrix_users(user.users_per_minute),
     )
-    await state.clear()
-    await state.update_data(data)
 
 
-@router.callback_query(UserState.action, F.data == "cancel:chat")
-async def cancel_action_chat(
+@router.callback_query(F.data.split(":")[0] == "upm")
+async def change_users_per_minute(
     query: CallbackQuery,
     redis: Redis,
     state: FSMContext,
     sessionmaker: async_sessionmaker,
+    user: UserManager,
 ):
     if (
         not query.data
@@ -432,15 +433,15 @@ async def cancel_action_chat(
         or isinstance(query.message, InaccessibleMessage)
     ):
         return
-    data = await state.get_data()
-    await query.message.edit_text(
-        "Выберите действие", reply_markup=await ik_action_with_bot()
-    )
-    await state.clear()
-    await state.update_data(data)
+    upm = int(query.data.split(":")[1])
+    user.users_per_minute = upm
+    async with sessionmaker() as session:
+        user = await session.merge(user)
+        await session.commit()
+    await users_per_minute(query, redis, state, sessionmaker, user)
 
 
-@router.callback_query(UserState.action, F.data == "cancel:chat_add_or_delete")
+@router.callback_query(UserState.action, F.data.split(":")[0] == "cancel")
 async def cancel_action_chat_add_or_delete(
     query: CallbackQuery,
     redis: Redis,
@@ -453,8 +454,13 @@ async def cancel_action_chat_add_or_delete(
         or isinstance(query.message, InaccessibleMessage)
     ):
         return
-    data = await state.get_data()
-    await info(query, redis, state, sessionmaker, data["type_data"])
+    to = query.data.split(":")[1]
+    type_data = (await state.get_data())["type_data"]
+    match to:
+        case "default":
+            await info(query, redis, state, sessionmaker, type_data)
+        case "add_or_delete":
+            await info(query, redis, state, sessionmaker, type_data)
 
 
 @router.callback_query(UserState.action, F.data.split(":")[0] == "back")
@@ -471,17 +477,38 @@ async def back_action(
     ):
         return
     to = query.data.split(":")[1]
-    type_data = (await state.get_data())["type_data"]
     match to:
-        case "to_add_or_delete":
-            if type_data == "chat":
-                await query.message.edit_reply_markup(
-                    reply_markup=await ik_add_or_delete("chat")
-                )
-            else:
-                await query.message.edit_reply_markup(
-                    reply_markup=await ik_add_or_delete()
-                )
+        case "default":
+            await query.message.edit_text(
+                text="Главное меню", reply_markup=await ik_main_menu()
+            )
+            await state.clear()
+        case "action_with_bot":
+            data = await state.get_data()
+            await query.message.edit_text(
+                "Боты", reply_markup=await ik_action_with_bot()
+            )
+            await state.clear()
+            await state.update_data(data)
+        case "add_or_delete":
+            await query.message.edit_reply_markup(
+                reply_markup=await ik_add_or_delete(back_to="action_with_bot"),
+            )
+
+
+@router.callback_query(F.data == "bots")
+async def show_bots(
+    query: CallbackQuery,
+    redis: Redis,
+    sessionmaker: async_sessionmaker,
+):
+    if not query.message or isinstance(query.message, InaccessibleMessage):
+        return
+    bots_data = await fn.get_available_bots(sessionmaker)
+    await query.message.edit_text(
+        "Боты",
+        reply_markup=await ik_available_bots(bots_data),
+    )
 
 
 @router.callback_query(F.data.split(":")[0] == "back")
@@ -499,16 +526,13 @@ async def back(
         return
     to = query.data.split(":")[1]
     match to:
-        case "to_main_menu":
+        case "default":
             await query.message.edit_text(
-                "Главное меню", reply_markup=await ik_main_menu()
+                text="Главное меню", reply_markup=await ik_main_menu()
             )
-        case "to_available_bots":
+        case "bots":
             bots_data = await fn.get_available_bots(sessionmaker)
             await query.message.edit_text(
-                "Боты", reply_markup=await ik_available_bots(bots_data)
-            )
-        case _:
-            await query.message.edit_text(
-                "Главное меню", reply_markup=await ik_main_menu()
+                "Боты",
+                reply_markup=await ik_available_bots(bots_data),
             )

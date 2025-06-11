@@ -16,7 +16,7 @@ from aiogram.fsm.storage.memory import SimpleEventIsolation
 from aiogram.fsm.storage.redis import RedisStorage
 
 from bot import errors, handlers
-from bot.db.sqlite.base import close_db, create_db_session_pool, init_db
+from bot.db.mysql.base import close_db, create_db_session_pool, init_db
 from bot.middlewares.check_user_middleware import CheckUserMiddleware
 from bot.settings import Settings
 
@@ -24,9 +24,7 @@ if TYPE_CHECKING:
     from redis.asyncio import Redis
 
 logging.basicConfig(level=logging.INFO)
-
 logger = logging.getLogger(__name__)
-# logging.getLogger("sqlalchemy.engine.Engine").setLevel(logging.WARNING)
 logger.setLevel(logging.INFO)
 
 

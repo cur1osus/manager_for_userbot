@@ -30,14 +30,12 @@ class CheckUserMiddleware(BaseMiddleware):
                     data["user"] = await _get_user_manager_model(
                         data["sessionmaker"],
                         user.id,
-                        user.username or "none",
                     )
             case "callback_query":
                 if user.is_bot is False and user.id != TG_SERVICE_USER_ID:
                     data["user"] = await _get_user_manager_model(
                         data["sessionmaker"],
                         user.id,
-                        user.username or "none",
                     )
 
             case _:

@@ -3,7 +3,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.dialects.sqlite import INTEGER
-from sqlalchemy.ext.asyncio import AsyncAttrs, AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncAttrs,
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 if TYPE_CHECKING:
@@ -17,7 +23,9 @@ class Base(DeclarativeBase, AsyncAttrs):
     repr_cols = ()
 
     def as_dict(self) -> dict[str, Any]:
-        return {column.name: getattr(self, column.name) for column in self.__table__.columns}
+        return {
+            column.name: getattr(self, column.name) for column in self.__table__.columns
+        }
 
     def __repr__(self) -> str:
         cols = [
@@ -28,14 +36,19 @@ class Base(DeclarativeBase, AsyncAttrs):
         return f"<{self.__class__.__name__} {', '.join(cols)}>"
 
 
-async def create_db_session_pool(settings: Settings) -> tuple[AsyncEngine, async_sessionmaker[AsyncSession]]:
-    engine: AsyncEngine = create_async_engine(settings.sqlite_dsn(),  max_overflow=10, pool_size=100)
+async def create_db_session_pool(
+    settings: Settings,
+) -> tuple[AsyncEngine, async_sessionmaker[AsyncSession]]:
+    engine: AsyncEngine = create_async_engine(
+        settings.sqlite_dsn(), max_overflow=10, pool_size=100
+    )
 
     return engine, async_sessionmaker(engine, expire_on_commit=False)
 
 
 async def init_db(engine: AsyncEngine) -> None:
     async with engine.begin() as conn:
+        # await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
 
 

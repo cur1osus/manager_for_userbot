@@ -7,7 +7,7 @@ from aiogram import Router
 from aiogram.filters import CommandObject, Command
 from aiogram.fsm.context import FSMContext
 
-from bot.db.sqlite.models import UserManager
+from bot.db.mysql.models import UserManager
 
 if TYPE_CHECKING:
     from aiogram.types import Message
