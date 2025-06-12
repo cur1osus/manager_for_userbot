@@ -140,3 +140,32 @@ class Function:
             s = s[4096:]
             s = f"... {s}"
         return s
+
+    @staticmethod
+    def get_log(file_path, line_count=20) -> list[str] | str:
+        """
+        Получить последние строки из файла.
+
+        :param file_path: Путь к файлу логов.
+        :param line_count: Количество строк, которые нужно получить (по умолчанию 20).
+        :return: Список последних строк.
+        """
+        try:
+            with open(file_path, "rb") as file:
+                file.seek(0, 2)  # Переходим в конец файла
+                buffer = bytearray()
+                end_of_file = file.tell()
+
+                while len(buffer.splitlines()) <= line_count and file.tell() > 0:
+                    # Смещаемся назад блоками по 1024 байта
+                    step = min(1024, file.tell())
+                    file.seek(-step, 1)
+                    buffer = file.read(step) + buffer #type: ignore
+                    file.seek(-step, 1)
+
+                lines = buffer.splitlines()[-line_count:]
+                return [line.decode("utf-8") for line in lines]
+        except FileNotFoundError as e:
+            return "Файл не найден"
+        except Exception as e:
+            return f"Ошибка при чтении файла: {e}"
