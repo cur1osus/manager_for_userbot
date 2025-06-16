@@ -6,17 +6,17 @@ from typing import TYPE_CHECKING
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import any_state
 from aiogram.types import CallbackQuery, InaccessibleMessage
+from aiogram.types.reply_keyboard_remove import ReplyKeyboardRemove
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from bot.keyboards.reply import rk_cancel
+from bot.db.mysql.models import Bot, Job, JobName
 from bot.keyboards.inline import ik_main_menu
-from bot.db.mysql.models import Bot
+from bot.keyboards.reply import rk_cancel
 from bot.states import UserState
 from bot.utils.func import Function as fn
-from bot.utils.manager import start_bot
-from aiogram.fsm.state import any_state
-from aiogram.types.reply_keyboard_remove import ReplyKeyboardRemove
+from bot.utils.manager import bot_has_started, start_bot
 
 if TYPE_CHECKING:
     from aiogram.types import Message
@@ -120,16 +120,16 @@ async def process_enter_code(
         return
 
     async with sessionmaker() as session:
-        session.add(
-            Bot(
-                api_id=int(api_id),
-                api_hash=api_hash,
-                phone=phone,
-                path_session=path_session,
-            )
+        bot = Bot(
+            api_id=int(api_id),
+            api_hash=api_hash,
+            phone=phone,
+            path_session=path_session,
         )
+        session.add(bot)
         await session.commit()
-    await message.answer("Готово", reply_markup=None)
+    await start_bot(phone, path_to_folder)
+    await message.answer("Бот подключен и запущен", reply_markup=ReplyKeyboardRemove())
     await state.clear()
 
 
@@ -163,14 +163,15 @@ async def process_enter_password(
         return
 
     async with sessionmaker() as session:
-        session.add(
-            Bot(
-                api_id=int(api_id),
-                api_hash=api_hash,
-                phone=phone,
-                path_session=path_session,
-            )
+        bot = Bot(
+            api_id=int(api_id),
+            api_hash=api_hash,
+            phone=phone,
+            path_session=path_session,
         )
+        bot_id = bot.id
+        job = Job(task=JobName.get_me_name.value, bot_id=bot_id)
+        session.add(bot, job)
         await session.commit()
     await start_bot(phone, path_to_folder)
     await message.answer("Бот подключен и запущен", reply_markup=ReplyKeyboardRemove())

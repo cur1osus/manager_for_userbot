@@ -31,7 +31,10 @@ async def ik_available_bots(
     builder = InlineKeyboardBuilder()
     if bots_data:
         for bot in bots_data:
-            builder.button(text=bot.phone, callback_data=f"bot_id:{bot.id}")
+            builder.button(
+                text=f"{'🟢' if bot.is_started else '🔴'} {bot.phone} ({bot.name or 'имя загружается...'})",
+                callback_data=f"bot_id:{bot.id}",
+            )
     builder.button(text="<-", callback_data=f"back:{back_to}")
     builder.adjust(1)
     return builder.as_markup()
@@ -44,6 +47,10 @@ async def ik_action_with_bot(back_to: str = "default") -> InlineKeyboardMarkup:
     builder.button(text="🟢 Старт", callback_data="start")
     builder.button(text="🔴 Стоп", callback_data="stop")
     builder.button(text="💬 Чаты", callback_data="info:chat")
+    builder.button(
+        text="🧠 Получить Обработанных",
+        callback_data="processed_users",
+    )
     builder.button(text="<-", callback_data=f"back:{back_to}")
     builder.adjust(1, 3, 1, 1)
     return builder.as_markup()
@@ -98,3 +105,51 @@ async def ik_num_matrix_users(current_choose: int, back_to: str = "default"):
     builder.button(text="<-", callback_data=f"back:{back_to}")
     builder.adjust(5)
     return builder.as_markup()
+
+
+async def ik_get_processed_users(back_to: str = "default"):
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📊 Получить обработанных", callback_data="get_processed_users"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Назад",
+                    callback_data=f"back:{back_to}",
+                )
+            ],
+        ]
+    )
+
+async def ik_reload_processed_users(back_to: str = "default"):
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📊 Обновить список обработанных", callback_data="update_processed_users"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Назад",
+                    callback_data=f"back:{back_to}",
+                )
+            ],
+        ]
+    )
+
+
+async def ik_back(back_to: str = "default"):
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Назад",
+                    callback_data=f"back:{back_to}",
+                )
+            ],
+        ]
+    )

@@ -14,11 +14,14 @@ from aiogram.client.telegram import PRODUCTION
 from aiogram.fsm.storage.base import DefaultKeyBuilder
 from aiogram.fsm.storage.memory import SimpleEventIsolation
 from aiogram.fsm.storage.redis import RedisStorage
+from aiogram.types import BotCommand
 
 from bot import errors, handlers
 from bot.db.mysql.base import close_db, create_db_session_pool, init_db
 from bot.middlewares.check_user_middleware import CheckUserMiddleware
 from bot.settings import Settings
+from bot.scheduler import default_scheduler as scheduler
+from bot.background_jobs import job_sec
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -51,6 +54,23 @@ async def shutdown(dispatcher: Dispatcher) -> None:
     logger.info("Bot stopped")
 
 
+async def start_scheduler() -> None:
+    scheduler.every(1).seconds.do(job_sec)
+    while True:
+        await scheduler.run_pending()
+        await asyncio.sleep(1)
+
+
+async def set_default_commands(bot: Bot):
+    await bot.set_my_commands(
+        [
+            BotCommand(command="start", description="start"),
+            BotCommand(command="reset", description="reset"),
+            BotCommand(command="log", description="log"),
+        ]
+    )
+
+
 async def main() -> None:
     settings = Settings()  # type: ignore
 
@@ -79,6 +99,9 @@ async def main() -> None:
     dp.include_routers(handlers.router, errors.router)
     dp.startup.register(startup)
     dp.shutdown.register(shutdown)
+    await set_default_commands(bot)
+    # asyncio.create_task(start_scheduler())
+    # dp.workflow_data.update({"scheduler": scheduler})
 
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
 

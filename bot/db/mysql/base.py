@@ -40,7 +40,11 @@ async def create_db_session_pool(
     settings: Settings,
 ) -> tuple[AsyncEngine, async_sessionmaker[AsyncSession]]:
     engine: AsyncEngine = create_async_engine(
-        settings.sqlite_dsn(), max_overflow=10, pool_size=100
+        settings.sqlite_dsn(),
+        max_overflow=10,
+        pool_size=100,
+        pool_pre_ping=True,
+        pool_recycle=900,
     )
 
     return engine, async_sessionmaker(engine, expire_on_commit=False)

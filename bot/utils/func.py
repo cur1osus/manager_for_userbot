@@ -4,9 +4,10 @@ import logging
 from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from telethon import TelegramClient  # type: ignore
+from aiogram.utils.formatting import Code, TextLink
 from telethon.errors import SessionPasswordNeededError  # type: ignore
 
-from bot.db.mysql.models import Base, Bot
+from bot.db.mysql.models import Base, Bot, MonitoringChat
 
 
 @dataclasses.dataclass
@@ -102,26 +103,40 @@ class Function:
     async def get_data_from_db(
         sessionmaker: async_sessionmaker,
         model_db: type[Base],
-        name_value: str,
+        name_value: str | None = None,
         where: list | None = None,
     ) -> list[str]:
         async with sessionmaker() as session:
+            if name_value:
+                return (
+                    [
+                        getattr(i, name_value)
+                        for i in (
+                            await session.scalars(
+                                select(model_db)
+                                .where(getattr(model_db, where[0]) == where[1])
+                                .order_by(model_db.id)
+                            )
+                        ).all()
+                    ]
+                    if where
+                    else [
+                        getattr(i, name_value)
+                        for i in (await session.scalars(select(model_db))).all()
+                    ]
+                )
             if where:
-                return [
-                    getattr(i, name_value)
-                    for i in (
+                return list(
+                    (
                         await session.scalars(
                             select(model_db)
                             .where(getattr(model_db, where[0]) == where[1])
                             .order_by(model_db.id)
                         )
                     ).all()
-                ]
+                )
             else:
-                return [
-                    getattr(i, name_value)
-                    for i in (await session.scalars(select(model_db))).all()
-                ]
+                return list((await session.scalars(select(model_db))).all())
 
     @staticmethod
     async def collapse_repeated_data(
@@ -136,6 +151,38 @@ class Function:
     @staticmethod
     async def watch_data(data: list[str], sep: str):
         s = "".join(f"{ind + 1}) {i}{sep}" for ind, i in enumerate(data))
+        if len(s) > 4096:
+            s = s[4096:]
+            s = f"... {s}"
+        return s
+
+    @staticmethod
+    async def watch_data_chats(chats: list[MonitoringChat], sep: str):
+        s = "".join(
+            f"{ind + 1}) {i.id_chat} ({i.title or 'название загружается...'}){sep}"
+            for ind, i in enumerate(chats)
+        )
+        if len(s) > 4096:
+            s = s[4096:]
+            s = f"... {s}"
+        return s
+
+    @staticmethod
+    async def watch_processed_users(processed_users: list[dict], sep: str):
+        s = ""
+        for i in processed_users:
+            for name, value in i.items():
+                if name == "username":
+                    value = f"@{value}" if value else "нет"
+                elif name == "id":
+                    value = TextLink(value, url=f"tg://user?id={value}").as_html()
+                elif name == "phone":
+                    value = f"+{value}" if value else "нет"
+                    value = Code(value).as_html()
+                else:
+                    value = Code(value).as_html() if value else "нет"
+                s += f"{name}: {value}{sep}"
+            s += "\n\n"
         if len(s) > 4096:
             s = s[4096:]
             s = f"... {s}"
@@ -160,12 +207,12 @@ class Function:
                     # Смещаемся назад блоками по 1024 байта
                     step = min(1024, file.tell())
                     file.seek(-step, 1)
-                    buffer = file.read(step) + buffer #type: ignore
+                    buffer = file.read(step) + buffer  # type: ignore
                     file.seek(-step, 1)
 
                 lines = buffer.splitlines()[-line_count:]
                 return [line.decode("utf-8") for line in lines]
-        except FileNotFoundError as e:
+        except FileNotFoundError:
             return "Файл не найден"
         except Exception as e:
             return f"Ошибка при чтении файла: {e}"

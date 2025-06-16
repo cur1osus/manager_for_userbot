@@ -3,6 +3,8 @@ import logging
 import os
 import signal
 
+import psutil  # type: ignore
+
 from config import BOT_NAME
 
 logger = logging.getLogger(__name__)
@@ -35,22 +37,12 @@ async def start_bot(phone: str, path_to_folder: str):
     return process
 
 
-async def bot_has_started(phone: str, path_to_folder: str):
+async def bot_has_started(phone: str, path_to_folder: str, pid: int):
     path_pid = os.path.join(path_to_folder, f"{phone}{PID_FILE}")
-    if not os.path.exists(path_pid):
-        return False
-    with open(f"{phone}{PID_FILE}", "r") as f:
-        pid = int(f.read())
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return False
-    return True
+    return psutil.pid_exists(pid) if os.path.exists(path_pid) else False
 
 
-async def stop_bot(phone: str, path_to_folder: str):
+async def delete_bot(phone: str, path_to_folder: str):
     path_pid = os.path.join(path_to_folder, f"{phone}{PID_FILE}")
     if not os.path.exists(path_pid):
         logger.info("PID-файл не найден, бот не запущен?")

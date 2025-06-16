@@ -3,16 +3,19 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+import msgpack  # type: ignore
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InaccessibleMessage, Message
-from sqlalchemy import and_, select
+from sqlalchemy import and_, delete, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from bot.db.mysql.models import (
     BannedUser,
     Bot,
     IgnoredWord,
+    Job,
+    JobName,
     KeyWord,
     MessageToAnswer,
     MonitoringChat,
@@ -22,17 +25,21 @@ from bot.keyboards.inline import (
     ik_action_with_bot,
     ik_add_or_delete,
     ik_available_bots,
+    ik_back,
     ik_cancel_action,
+    ik_get_processed_users,
     ik_main_menu,
     ik_num_matrix_del,
     ik_num_matrix_users,
+    ik_reload_processed_users,
 )
 from bot.states import UserState
 from bot.utils.func import Function as fn
-from bot.utils.manager import start_bot, stop_bot
+from bot.utils.manager import delete_bot, start_bot
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
+
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -80,8 +87,7 @@ async def restart_bot(
         if not bot:
             return
         phone = bot.phone
-    await stop_bot(phone, path_to_folder)
-
+    await delete_bot(phone, path_to_folder)
     await start_bot(phone, path_to_folder)
     await query.message.edit_text(
         "Бот подключен и запущен", reply_markup=await ik_main_menu()
@@ -106,7 +112,10 @@ async def start_bot_process(
         bot: Bot = await session.get(Bot, bot_id)
         bot.is_started = True
         await session.commit()
-    await query.message.edit_text("Бот Начал писать и анализировать сообщения 🟢")
+    await query.message.edit_text(
+        "Бот Начал писать и анализировать сообщения 🟢",
+        reply_markup=await ik_action_with_bot(),
+    )
 
 
 @router.callback_query(F.data == "stop")
@@ -129,11 +138,12 @@ async def stop_bot_process(
         await session.commit()
     await query.message.edit_text(
         "Бот остановлен и не будет писать и анализировать сообщения 🔴",
+        reply_markup=await ik_action_with_bot(),
     )
 
 
 @router.callback_query(F.data == "delete")
-async def delete_bot(
+async def delete_bot_(
     query: CallbackQuery,
     redis: Redis,
     state: FSMContext,
@@ -152,7 +162,10 @@ async def delete_bot(
         bot: Bot = await session.get(Bot, bot_id)
         if bot is None:
             return
-        await stop_bot(bot.phone, path_to_folder)
+        await delete_bot(bot.phone, path_to_folder)
+        await session.execute(
+            delete(MonitoringChat).where(MonitoringChat.bot_id == bot.id)
+        )
         await session.delete(bot)
         await session.commit()
     await query.message.edit_text("Бот удален", reply_markup=await ik_main_menu())
@@ -176,20 +189,16 @@ async def info(
     match type_data:
         case "answer":
             data = await fn.get_data_from_db(sessionmaker, MessageToAnswer, "sentence")
-            if data:
-                data = await fn.watch_data(data, sep)
-            else:
-                data = "Ответы отсутствуют"  # type: ignore
+            data = await fn.watch_data(data, sep) if data else "Ответы отсутствуют"  # type: ignore
             await query.message.edit_text(
                 f"Ответы:\n{data}",
                 reply_markup=await ik_add_or_delete(),
             )
         case "ban":
             data = await fn.get_data_from_db(sessionmaker, BannedUser, "username")
-            if data:
-                data = await fn.watch_data(data, sep)
-            else:
-                data = "Пользователи отсутствуют"  # type: ignore
+            data = (
+                await fn.watch_data(data, sep) if data else "Пользователи отсутствуют"  # type: ignore
+            )
             await query.message.edit_text(
                 f"Забаненные пользователи:\n{data}",
                 reply_markup=await ik_add_or_delete(),
@@ -199,10 +208,9 @@ async def info(
             data = await fn.get_data_from_db(
                 sessionmaker,
                 MonitoringChat,
-                "id_chat",
-                ["bot_id", bot_id],
+                where=["bot_id", bot_id],
             )
-            data = await fn.watch_data(data, sep) if data else "Чаты отсутствуют"  # type: ignore
+            data = await fn.watch_data_chats(data, sep) if data else "Чаты отсутствуют"  # type: ignore
             await query.message.edit_text(
                 f"Мониторинг чатов:\n{data}",
                 reply_markup=await ik_add_or_delete(back_to="action_with_bot"),  # type: ignore
@@ -304,21 +312,29 @@ async def processing_message_to_add(
                 bot_id=bot_id,
             )
             kwargs_for_keyboard["back_to"] = "action_with_bot"
-            data = await fn.get_data_from_db(sessionmaker, MonitoringChat, "id_chat")
+            data = await fn.get_data_from_db(sessionmaker, MonitoringChat)
+            async with sessionmaker() as session:
+                job = Job(task=JobName.get_chat_title.value, bot_id=bot_id)
+                session.add(job)
+                await session.commit()
         case "ignore":
             await fn.add_data_to_db(sessionmaker, data_to_add, IgnoredWord, "word")
             data = await fn.get_data_from_db(sessionmaker, IgnoredWord, "word")
         case "keyword":
             await fn.add_data_to_db(sessionmaker, data_to_add, KeyWord, "word")
             data = await fn.get_data_from_db(sessionmaker, KeyWord, "word")
-    data_txt = await fn.watch_data(data, sep)
+    data_txt = (
+        await fn.watch_data(data, sep)  # type: ignore
+        if type_data != "chat"
+        else await fn.watch_data_chats(data, sep)  # type: ignore
+    )
     await message.answer(
         data_txt, reply_markup=await ik_add_or_delete(**kwargs_for_keyboard)
     )
 
 
 @router.callback_query(UserState.action, F.data == "del")
-async def delete(
+async def delete_(
     query: CallbackQuery,
     redis: Redis,
     state: FSMContext,
@@ -396,7 +412,7 @@ async def del_by_id(
                 await session.delete(await session.get(KeyWord, int(id_)))
         await session.commit()
     await info(query, redis, state, sessionmaker, type_data=type_data)
-    await delete(query, redis, state, sessionmaker)
+    await delete_(query, redis, state, sessionmaker)
 
 
 @router.callback_query(F.data == "users_per_minute")
@@ -439,6 +455,101 @@ async def change_users_per_minute(
         user = await session.merge(user)
         await session.commit()
     await users_per_minute(query, redis, state, sessionmaker, user)
+
+
+@router.callback_query(F.data == "processed_users")
+async def get_processed_users(
+    query: CallbackQuery,
+    redis: Redis,
+    state: FSMContext,
+    sessionmaker: async_sessionmaker,
+    user: UserManager,
+):
+    if (
+        not query.data
+        or not query.message
+        or isinstance(query.message, InaccessibleMessage)
+    ):
+        return
+    bot_id = (await state.get_data())["bot_id"]
+    await state.set_state(UserState.action)
+    async with sessionmaker() as session:
+        job: Job | None = await session.scalar(
+            select(Job).where(
+                and_(Job.bot_id == bot_id, Job.task == JobName.processed_users.value)
+            )
+        )
+    if not job:
+        await query.message.edit_text(
+            text="Чтобы получить нажмите кнопку снизу",
+            reply_markup=await ik_get_processed_users(back_to="action_with_bot"),
+        )
+        return
+    if not job.answer:
+        await query.message.edit_text(
+            text="Задача еще не выполнена",
+            reply_markup=await ik_back(back_to="action_with_bot"),
+        )
+        return
+    data = msgpack.unpackb(job.answer)
+    txt = data
+    if isinstance(data, list):
+        txt = await fn.watch_processed_users(data, sep)
+    await query.message.edit_text(
+        text=txt,
+        reply_markup=await ik_reload_processed_users(back_to="action_with_bot"),
+    )
+
+
+@router.callback_query(UserState.action, F.data == "update_processed_users")
+async def update_job_to_get_processed_users(
+    query: CallbackQuery,
+    state: FSMContext,
+    sessionmaker: async_sessionmaker,
+):
+    if (
+        not query.data
+        or not query.message
+        or isinstance(query.message, InaccessibleMessage)
+    ):
+        return
+    bot_id = (await state.get_data())["bot_id"]
+    new_job = Job(bot_id=bot_id, task=JobName.processed_users.value)
+    async with sessionmaker() as session:
+        await session.execute(
+            delete(Job).where(
+                and_(Job.bot_id == bot_id, Job.task == JobName.processed_users.value)
+            )
+        )
+        session.add(new_job)
+        await session.commit()
+    await query.message.edit_text(
+        text="Задача добавлена и будет выполнена через 5 секунд",
+        reply_markup=await ik_back(back_to="action_with_bot"),
+    )
+
+
+@router.callback_query(UserState.action, F.data == "get_processed_users")
+async def add_job_to_get_processed_users(
+    query: CallbackQuery,
+    state: FSMContext,
+    sessionmaker: async_sessionmaker,
+):
+    if (
+        not query.data
+        or not query.message
+        or isinstance(query.message, InaccessibleMessage)
+    ):
+        return
+    bot_id = (await state.get_data())["bot_id"]
+    job = Job(bot_id=bot_id, task=JobName.processed_users.value)
+    async with sessionmaker() as session:
+        session.add(job)
+        await session.commit()
+    await query.message.edit_text(
+        text="Задача добавлена и будет выполнена через 5 секунд",
+        reply_markup=await ik_back(back_to="action_with_bot"),
+    )
 
 
 @router.callback_query(UserState.action, F.data.split(":")[0] == "cancel")
@@ -507,6 +618,11 @@ async def show_bots(
     if not query.message or isinstance(query.message, InaccessibleMessage):
         return
     bots_data = await fn.get_available_bots(sessionmaker)
+    async with sessionmaker() as session:
+        for bot in bots_data:
+            job = Job(task=JobName.get_me_name.value, bot_id=bot.id)
+            session.add(job)
+        await session.commit()
     await query.message.edit_text(
         "Боты",
         reply_markup=await ik_available_bots(bots_data),
