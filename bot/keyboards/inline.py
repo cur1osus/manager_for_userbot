@@ -21,6 +21,7 @@ async def ik_main_menu() -> InlineKeyboardMarkup:
     builder.button(
         text="🏃🏼‍➡️ Пропускная способность", callback_data="users_per_minute"
     )
+    builder.button(text="🔍 История", callback_data="history")
     builder.adjust(2, 2, 2, 1)
     return builder.as_markup()
 
@@ -124,12 +125,14 @@ async def ik_get_processed_users(back_to: str = "default"):
         ]
     )
 
+
 async def ik_reload_processed_users(back_to: str = "default"):
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="📊 Обновить список обработанных", callback_data="update_processed_users"
+                    text="📊 Обновить список обработанных",
+                    callback_data="update_processed_users",
                 )
             ],
             [

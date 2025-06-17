@@ -7,7 +7,7 @@ import msgpack  # type: ignore
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InaccessibleMessage, Message
-from sqlalchemy import and_, delete, select
+from sqlalchemy import and_, delete, desc, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from bot.db.mysql.models import (
@@ -19,6 +19,7 @@ from bot.db.mysql.models import (
     KeyWord,
     MessageToAnswer,
     MonitoringChat,
+    UserAnalyzed,
     UserManager,
 )
 from bot.keyboards.inline import (
@@ -550,6 +551,37 @@ async def add_job_to_get_processed_users(
         text="Задача добавлена и будет выполнена через 5 секунд",
         reply_markup=await ik_back(back_to="action_with_bot"),
     )
+
+
+@router.callback_query(F.data == "history")
+async def history(
+    query: CallbackQuery,
+    state: FSMContext,
+    sessionmaker: async_sessionmaker,
+):
+    if (
+        not query.data
+        or not query.message
+        or isinstance(query.message, InaccessibleMessage)
+    ):
+        return
+    async with sessionmaker() as session:
+        user_analyzed: list[UserAnalyzed] = (
+            await session.scalars(
+                select(UserAnalyzed).order_by(desc(UserAnalyzed.id)).limit(30)
+            )
+        ).all()
+        user_analyzed.reverse()
+        t = ""
+        for user in user_analyzed:
+            msg = user.additional_message[:10]
+            t += f"{user.id}. {'🟢' if user.sended else '🔴'} @{user.username} - {msg}...\n"
+    if not t:
+        await query.message.edit_text(
+            text="История пуста", reply_markup=await ik_back()
+        )
+        return
+    await query.message.edit_text(text=t, reply_markup=await ik_back())
 
 
 @router.callback_query(UserState.action, F.data.split(":")[0] == "cancel")
