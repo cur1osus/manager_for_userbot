@@ -1,5 +1,6 @@
 import dataclasses
 import logging
+from typing import Final
 
 from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -20,6 +21,8 @@ logger = logging.getLogger(__name__)
 
 
 class Function:
+    max_length_message: Final[int] = 4000
+
     @staticmethod
     async def get_available_bots(sessionmaker: async_sessionmaker) -> list[Bot]:
         async with sessionmaker() as session:
@@ -151,8 +154,8 @@ class Function:
     @staticmethod
     async def watch_data(data: list[str], sep: str):
         s = "".join(f"{ind + 1}) {i}{sep}" for ind, i in enumerate(data))
-        if len(s) > 4096:
-            s = s[4096:]
+        if len(s) > Function.max_length_message:
+            s = s[Function.max_length_message :]
             s = f"... {s}"
         return s
 
@@ -162,8 +165,8 @@ class Function:
             f"{ind + 1}) {i.id_chat} ({i.title or 'название загружается...'}){sep}"
             for ind, i in enumerate(chats)
         )
-        if len(s) > 4096:
-            s = s[4096:]
+        if len(s) > Function.max_length_message:
+            s = s[Function.max_length_message :]
             s = f"... {s}"
         return s
 
@@ -183,8 +186,8 @@ class Function:
                     value = Code(value).as_html() if value else "нет"
                 s += f"{name}: {value}{sep}"
             s += "\n\n"
-        if len(s) > 4096:
-            s = s[4096:]
+        if len(s) > Function.max_length_message:
+            s = s[Function.max_length_message :]
             s = f"... {s}"
         return s
 
