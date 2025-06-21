@@ -184,11 +184,14 @@ class Function:
     async def watch_processed_users(processed_users: list[dict], sep: str):
         s = ""
         for i in processed_users:
+            del i["id"]
+            del i["last_name"]
             for name, value in i.items():
                 if name == "username":
                     value = f"@{value}" if value else "нет"
-                elif name == "id":
-                    value = TextLink(value, url=f"tg://user?id={value}").as_html()
+                # elif name == "id":
+                #     value = TextLink(value, url=f"tg://user?id={value}").as_html()
+                #     continue
                 elif name == "phone":
                     value = f"+{value}" if value else "нет"
                     value = Code(value).as_html()
