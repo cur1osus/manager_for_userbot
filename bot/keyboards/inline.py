@@ -7,6 +7,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from bot.db.mysql.models import Bot
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -65,14 +66,27 @@ async def ik_cancel_action(back_to: str = "default") -> InlineKeyboardMarkup:
     )
 
 
-async def ik_add_or_delete(back_to: str = "default") -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="➖ Удалить", callback_data="del")],
-            [InlineKeyboardButton(text="➕ Добавить", callback_data="add")],
-            [InlineKeyboardButton(text="<-", callback_data=f"back:{back_to}")],
-        ]
-    )
+async def ik_add_or_delete(
+    current_page: int,
+    all_page: int,
+    back_to: str = "default",
+) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    adjust = []
+    if all_page:
+        builder.button(
+            text=f"{current_page} / {all_page}", callback_data="info_about_pages"
+        )
+        adjust.append(1)
+    if all_page > 1:
+        builder.button(text="<--", callback_data="arrow_left")
+        builder.button(text="-->", callback_data="arrow_right")
+        adjust.append(2)
+    builder.button(text="➕ Добавить", callback_data="add")
+    builder.button(text="➖ Удалить", callback_data="del")
+    builder.button(text="<-", callback_data=f"back:{back_to}")
+    builder.adjust(*adjust, 1, 1, 1)
+    return builder.as_markup()
 
 
 limit_button: Final = 80
@@ -143,6 +157,23 @@ async def ik_reload_processed_users(back_to: str = "default"):
             ],
         ]
     )
+
+
+async def ik_history_back(all_page: int, current_page: int, back_to: str = "default"):
+    builder = InlineKeyboardBuilder()
+    adjust = []
+    if all_page:
+        builder.button(
+            text=f"{current_page} / {all_page}", callback_data="info_about_pages"
+        )
+        adjust.append(1)
+    if all_page > 1:
+        builder.button(text="<--", callback_data="h:arrow_left")
+        builder.button(text="-->", callback_data="h:arrow_right")
+        adjust.append(2)
+    builder.button(text="<-", callback_data=f"back:{back_to}")
+    builder.adjust(*adjust, 1)
+    return builder.as_markup()
 
 
 async def ik_back(back_to: str = "default"):

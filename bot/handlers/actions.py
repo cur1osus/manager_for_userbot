@@ -7,7 +7,7 @@ import msgpack  # type: ignore
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InaccessibleMessage, Message
-from sqlalchemy import and_, delete, desc, select
+from sqlalchemy import and_, asc, delete, desc, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from bot.db.mysql.models import (
@@ -33,6 +33,7 @@ from bot.keyboards.inline import (
     ik_num_matrix_del,
     ik_num_matrix_users,
     ik_reload_processed_users,
+    ik_history_back,
 )
 from bot.states import UserState
 from bot.utils.func import Function as fn
@@ -40,7 +41,7 @@ from bot.utils.manager import delete_bot, start_bot
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
-
+from sqlalchemy import func
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -174,36 +175,41 @@ async def delete_bot_(
 
 @router.callback_query(F.data.split(":")[0] == "info")
 async def info(
-    query: CallbackQuery,
+    query: CallbackQuery | Message,
     redis: Redis,
     state: FSMContext,
     sessionmaker: async_sessionmaker,
     type_data: str | None = None,
+    current_page: int | None = None,
 ):
-    if (
-        not query.data
-        or not query.message
-        or isinstance(query.message, InaccessibleMessage)
-    ):
-        return
-    type_data = type_data or query.data.split(":")[1]
+    if isinstance(query, CallbackQuery):
+        if (
+            not query.data
+            or not query.message
+            or isinstance(query.message, InaccessibleMessage)
+        ):
+            return
+        type_data = type_data or query.data.split(":")[1]
+    current_page = current_page or 1
+    kwargs_for_keyboard: dict = {}
     match type_data:
         case "answer":
             data = await fn.get_data_from_db(sessionmaker, MessageToAnswer, "sentence")
-            data = await fn.watch_data(data, sep) if data else "Ответы отсутствуют"  # type: ignore
-            await query.message.edit_text(
-                f"Ответы:\n{data}",
-                reply_markup=await ik_add_or_delete(),
+            q_string_per_page = 10
+            data_str = (
+                await fn.watch_data(data, sep, q_string_per_page, current_page)  # type: ignore
+                if data
+                else "Ответы отсутствуют"
             )
         case "ban":
             data = await fn.get_data_from_db(sessionmaker, BannedUser, "username")
-            data = (
-                await fn.watch_data(data, sep) if data else "Пользователи отсутствуют"  # type: ignore
-            )
-            await query.message.edit_text(
-                f"Забаненные пользователи:\n{data}",
-                reply_markup=await ik_add_or_delete(),
-            )
+            q_string_per_page = 10
+            data_str = (
+                await fn.watch_data(data, sep, q_string_per_page, current_page)  # type: ignore
+                if data
+                else "Пользователи отсутствуют"
+            )  # type: ignore
+
         case "chat":
             bot_id = (await state.get_data())["bot_id"]
             data = await fn.get_data_from_db(
@@ -211,34 +217,82 @@ async def info(
                 MonitoringChat,
                 where=["bot_id", bot_id],
             )
-            data = await fn.watch_data_chats(data, sep) if data else "Чаты отсутствуют"  # type: ignore
-            await query.message.edit_text(
-                f"Мониторинг чатов:\n{data}",
-                reply_markup=await ik_add_or_delete(back_to="action_with_bot"),  # type: ignore
-            )
+            q_string_per_page = 10
+            data_str = (
+                await fn.watch_data(data, sep, q_string_per_page, current_page)  # type: ignore
+                if data
+                else "Чаты отсутствуют"
+            )  # type: ignore
+            kwargs_for_keyboard = {"back_to": "action_with_bot"}
         case "keyword":
             data = await fn.get_data_from_db(sessionmaker, KeyWord, "word")
             if data:
-                data = await fn.watch_data(data, sep)
+                q_string_per_page = 10
+                data_str = await fn.watch_data(
+                    data, sep, q_string_per_page, current_page
+                )  # type: ignore
             else:
                 data = "Триггерные слова отсутствуют"  # type: ignore
-            await query.message.edit_text(
-                f"Триггерные слова:\n{data}",
-                reply_markup=await ik_add_or_delete(),
-            )
 
         case "ignore":
             data = await fn.get_data_from_db(sessionmaker, IgnoredWord, "word")
             if data:
-                data = await fn.watch_data(data, sep)
+                q_string_per_page = 10
+                data_str = await fn.watch_data(
+                    data, sep, q_string_per_page, current_page
+                )  # type: ignore
             else:
                 data = "Игнорируемые слова отсутствуют"  # type: ignore
-            await query.message.edit_text(
-                f"Игнорируемые слова:\n{data}",
-                reply_markup=await ik_add_or_delete(),
-            )
+    all_page = await fn.count_page(
+        len_data=len(data), q_string_per_page=q_string_per_page
+    )
+    kwargs_for_keyboard["all_page"] = all_page
+    kwargs_for_keyboard["current_page"] = current_page
+    if isinstance(query, CallbackQuery):
+        await query.message.edit_text(  # type: ignore
+            text=data_str,
+            reply_markup=await ik_add_or_delete(**kwargs_for_keyboard),
+        )
+    else:
+        await query.answer(
+            text=data_str,
+            reply_markup=await ik_add_or_delete(**kwargs_for_keyboard),
+        )
     await state.set_state(UserState.action)
-    await state.update_data(type_data=type_data)
+    await state.update_data(
+        type_data=type_data, current_page=current_page, all_page=all_page
+    )
+
+
+@router.callback_query(F.data.in_(["arrow_left", "arrow_right"]))
+async def arrow(
+    query: CallbackQuery,
+    redis: Redis,
+    state: FSMContext,
+    sessionmaker: async_sessionmaker,
+):
+    if (
+        not query.data
+        or not query.message
+        or isinstance(query.message, InaccessibleMessage)
+    ):
+        return
+    arrow = query.data
+    data = await state.get_data()
+    page = data.get("current_page", 1)
+    all_page = data.get("all_page", 1)
+    type_data = data.get("type_data")
+    match arrow:
+        case "arrow_left":
+            page = page - 1 if page > 1 else all_page
+        case "arrow_right":
+            page = page + 1 if page < all_page else 1
+    try:
+        await info(
+            query, redis, state, sessionmaker, type_data=type_data, current_page=page
+        )
+    except Exception:
+        await query.answer("Страница всего одна :(")
 
 
 @router.callback_query(UserState.action, F.data == "add")
@@ -292,17 +346,13 @@ async def processing_message_to_add(
         return
     data_to_add = [i.strip() for i in message.text.split(sep)]
     type_data = (await state.get_data())["type_data"]
-    kwargs_for_keyboard: dict = {}
     match type_data:
         case "answer":
             await fn.add_data_to_db(
                 sessionmaker, data_to_add, MessageToAnswer, "sentence"
             )
-            data = await fn.get_data_from_db(sessionmaker, MessageToAnswer, "sentence")
         case "ban":
             await fn.add_data_to_db(sessionmaker, data_to_add, BannedUser, "username")
-            data = await fn.get_data_from_db(sessionmaker, BannedUser, "username")
-            data_txt = await fn.watch_data(data, sep)
         case "chat":
             bot_id = (await state.get_data())["bot_id"]
             await fn.add_data_to_db(
@@ -312,25 +362,22 @@ async def processing_message_to_add(
                 "id_chat",
                 bot_id=bot_id,
             )
-            kwargs_for_keyboard["back_to"] = "action_with_bot"
-            data = await fn.get_data_from_db(sessionmaker, MonitoringChat)
             async with sessionmaker() as session:
                 job = Job(task=JobName.get_chat_title.value, bot_id=bot_id)
                 session.add(job)
                 await session.commit()
         case "ignore":
             await fn.add_data_to_db(sessionmaker, data_to_add, IgnoredWord, "word")
-            data = await fn.get_data_from_db(sessionmaker, IgnoredWord, "word")
         case "keyword":
             await fn.add_data_to_db(sessionmaker, data_to_add, KeyWord, "word")
-            data = await fn.get_data_from_db(sessionmaker, KeyWord, "word")
-    data_txt = (
-        await fn.watch_data(data, sep)  # type: ignore
-        if type_data != "chat"
-        else await fn.watch_data_chats(data, sep)  # type: ignore
-    )
-    await message.answer(
-        data_txt, reply_markup=await ik_add_or_delete(**kwargs_for_keyboard)
+    current_page = (await state.get_data())["current_page"]
+    await info(
+        message,
+        redis,
+        state,
+        sessionmaker,
+        type_data=type_data,
+        current_page=current_page,
     )
 
 
@@ -558,6 +605,7 @@ async def history(
     query: CallbackQuery,
     state: FSMContext,
     sessionmaker: async_sessionmaker,
+    current_page: int | None = None,
 ):
     if (
         not query.data
@@ -565,23 +613,70 @@ async def history(
         or isinstance(query.message, InaccessibleMessage)
     ):
         return
+    current_page = current_page or 1
+    q_string_per_page = 10
     async with sessionmaker() as session:
+        len_data = await session.scalar(select(func.count(UserAnalyzed.id)))
+        all_page = await fn.count_page(len_data, q_string_per_page)
         user_analyzed: list[UserAnalyzed] = (
             await session.scalars(
-                select(UserAnalyzed).order_by(desc(UserAnalyzed.id)).limit(30)
+                select(UserAnalyzed)
+                .order_by(asc(UserAnalyzed.id))
+                .slice(
+                    (current_page - 1) * q_string_per_page,
+                    current_page * q_string_per_page,
+                )
             )
         ).all()
-        user_analyzed.reverse()
         t = ""
         for user in user_analyzed:
-            msg = user.additional_message[:10]
+            msg = user.additional_message[:15].replace("\n", "")
             t += f"{user.id}. {'🟢' if user.sended else '🔴'} @{user.username} - {msg}...\n"
     if not t:
         await query.message.edit_text(
             text="История пуста", reply_markup=await ik_back()
         )
         return
-    await query.message.edit_text(text=t, reply_markup=await ik_back())
+    if len(t) > fn.max_length_message:
+        t = t[: fn.max_length_message - 4]
+        t += "..."
+    await state.update_data(current_page=current_page, all_page=all_page)
+    await query.message.edit_text(
+        text=t,
+        reply_markup=await ik_history_back(
+            all_page=all_page,
+            current_page=current_page,
+        ),
+    )
+
+
+@router.callback_query(F.data.split(":")[0] == "h")
+async def arrow_history(
+    query: CallbackQuery,
+    redis: Redis,
+    state: FSMContext,
+    sessionmaker: async_sessionmaker,
+):
+    if (
+        not query.data
+        or not query.message
+        or isinstance(query.message, InaccessibleMessage)
+    ):
+        return
+    arrow = query.data.split(":")[1]
+    data = await state.get_data()
+    page = data.get("current_page", 1)
+    all_page = data.get("all_page", 1)
+    match arrow:
+        case "arrow_left":
+            page = page - 1 if page > 1 else all_page
+        case "arrow_right":
+            page = page + 1 if page < all_page else 1
+    try:
+        await history(query, state, sessionmaker, current_page=page)
+    except Exception as e:
+        logger.exception(e)
+        await query.answer("Страница всего одна :(")
 
 
 @router.callback_query(UserState.action, F.data.split(":")[0] == "cancel")
@@ -634,11 +729,23 @@ async def back_action(
             await state.clear()
             await state.update_data(data)
         case "chat_add_or_delete":
+            current_page = (await state.get_data())["current_page"]
+            all_page = (await state.get_data())["all_page"]
             await query.message.edit_reply_markup(
-                reply_markup=await ik_add_or_delete(back_to="action_with_bot"),
+                reply_markup=await ik_add_or_delete(
+                    back_to="action_with_bot",
+                    current_page=current_page,
+                    all_page=all_page,
+                ),
             )
         case "base_add_or_delete":
-            await query.message.edit_reply_markup(reply_markup=await ik_add_or_delete())
+            current_page = (await state.get_data())["current_page"]
+            all_page = (await state.get_data())["all_page"]
+            await query.message.edit_reply_markup(
+                reply_markup=await ik_add_or_delete(
+                    current_page=current_page, all_page=all_page
+                )
+            )
 
 
 @router.callback_query(F.data == "bots")

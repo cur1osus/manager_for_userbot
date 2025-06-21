@@ -152,12 +152,22 @@ class Function:
         return data_to_compare
 
     @staticmethod
-    async def watch_data(data: list[str], sep: str):
-        s = "".join(f"{ind + 1}) {i}{sep}" for ind, i in enumerate(data))
+    async def watch_data(
+        data: list[str], sep: str, q_string_per_page: int, page: int
+    ) -> str:
+        data_enumerate = list(enumerate(data))
+        data_ = data_enumerate[
+            (page - 1) * q_string_per_page : page * q_string_per_page
+        ]
+        s = "".join(f"{ind + 1}) {i}{sep}" for ind, i in data_)
         if len(s) > Function.max_length_message:
-            s = s[Function.max_length_message :]
-            s = f"... {s}"
+            return await Function.watch_data(data, sep, q_string_per_page - 1, page)
         return s
+
+    @staticmethod
+    async def count_page(len_data: int, q_string_per_page: int) -> int:
+        remains = len_data % q_string_per_page
+        return len_data // q_string_per_page + (1 if remains else 0)
 
     @staticmethod
     async def watch_data_chats(chats: list[MonitoringChat], sep: str):
