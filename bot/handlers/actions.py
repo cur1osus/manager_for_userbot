@@ -219,7 +219,7 @@ async def info(
             )
             q_string_per_page = 10
             data_str = (
-                await fn.watch_data(data, sep, q_string_per_page, current_page)  # type: ignore
+                await fn.watch_data_chats(data, sep, q_string_per_page, current_page)  # type: ignore
                 if data
                 else "Чаты отсутствуют"
             )  # type: ignore

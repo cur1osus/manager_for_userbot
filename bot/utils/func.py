@@ -170,14 +170,27 @@ class Function:
         return len_data // q_string_per_page + (1 if remains else 0)
 
     @staticmethod
-    async def watch_data_chats(chats: list[MonitoringChat], sep: str):
+    async def watch_data_chats(
+        chats: list[MonitoringChat],
+        sep: str,
+        q_string_per_page: int,
+        page: int,
+    ):
+        chats_enumerate = list(enumerate(chats))
+        chats_ = chats_enumerate[
+            (page - 1) * q_string_per_page : page * q_string_per_page
+        ]
         s = "".join(
             f"{ind + 1}) {i.id_chat} ({i.title or 'название загружается...'}){sep}"
-            for ind, i in enumerate(chats)
+            for ind, i in chats_
         )
         if len(s) > Function.max_length_message:
-            s = s[Function.max_length_message :]
-            s = f"... {s}"
+            return await Function.watch_data_chats(
+                chats,
+                sep,
+                q_string_per_page - 1,
+                page,
+            )
         return s
 
     @staticmethod
