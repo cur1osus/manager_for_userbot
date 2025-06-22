@@ -140,23 +140,28 @@ async def ik_get_processed_users(back_to: str = "default"):
     )
 
 
-async def ik_reload_processed_users(back_to: str = "default"):
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="📊 Обновить список обработанных",
-                    callback_data="update_processed_users",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="Назад",
-                    callback_data=f"back:{back_to}",
-                )
-            ],
-        ]
+async def ik_reload_processed_users(
+    all_page: int,
+    current_page: int,
+    back_to: str = "default",
+):
+    builder = InlineKeyboardBuilder()
+    adjust = []
+    if all_page:
+        builder.button(
+            text=f"{current_page} / {all_page}", callback_data="info_about_pages"
+        )
+        adjust.append(1)
+    if all_page > 1:
+        builder.button(text="<--", callback_data="u:arrow_left")
+        builder.button(text="-->", callback_data="u:arrow_right")
+        adjust.append(2)
+    builder.button(
+        text="📊 Обновить список обработанных", callback_data="update_processed_users"
     )
+    builder.button(text="<-", callback_data=f"back:{back_to}")
+    builder.adjust(*adjust, 1, 1)
+    return builder.as_markup()
 
 
 async def ik_history_back(all_page: int, current_page: int, back_to: str = "default"):

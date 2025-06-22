@@ -7,7 +7,7 @@ import msgpack  # type: ignore
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InaccessibleMessage, Message
-from sqlalchemy import and_, asc, delete, desc, select
+from sqlalchemy import and_, asc, delete, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from bot.db.mysql.models import (
@@ -29,11 +29,11 @@ from bot.keyboards.inline import (
     ik_back,
     ik_cancel_action,
     ik_get_processed_users,
+    ik_history_back,
     ik_main_menu,
     ik_num_matrix_del,
     ik_num_matrix_users,
     ik_reload_processed_users,
-    ik_history_back,
 )
 from bot.states import UserState
 from bot.utils.func import Function as fn
@@ -190,26 +190,16 @@ async def info(
         ):
             return
         type_data = type_data or query.data.split(":")[1]
-    current_page = current_page or 1
     kwargs_for_keyboard: dict = {}
+    all_page = None
+    data_str = None
     match type_data:
         case "answer":
             data = await fn.get_data_from_db(sessionmaker, MessageToAnswer, "sentence")
-            q_string_per_page = 10
-            data_str = (
-                await fn.watch_data(data, sep, q_string_per_page, current_page)  # type: ignore
-                if data
-                else "Ответы отсутствуют"
-            )
+            data_str = None if data else "Ответы отсутствуют"
         case "ban":
             data = await fn.get_data_from_db(sessionmaker, BannedUser, "username")
-            q_string_per_page = 10
-            data_str = (
-                await fn.watch_data(data, sep, q_string_per_page, current_page)  # type: ignore
-                if data
-                else "Пользователи отсутствуют"
-            )  # type: ignore
-
+            data_str = None if data else "Пользователи отсутствуют"
         case "chat":
             bot_id = (await state.get_data())["bot_id"]
             data = await fn.get_data_from_db(
@@ -218,36 +208,47 @@ async def info(
                 where=["bot_id", bot_id],
             )
             q_string_per_page = 10
+            all_page = await fn.count_page(
+                len_data=len(data), q_string_per_page=q_string_per_page
+            )
+            current_page = current_page or all_page
             data_str = (
-                await fn.watch_data_chats(data, sep, q_string_per_page, current_page)  # type: ignore
+                await fn.watch_data_chats(
+                    data,  # type: ignore
+                    sep,
+                    q_string_per_page,
+                    current_page or all_page,
+                )
                 if data
                 else "Чаты отсутствуют"
-            )  # type: ignore
-            kwargs_for_keyboard = {"back_to": "action_with_bot"}
+            )
+            kwargs_for_keyboard = {
+                "back_to": "action_with_bot",
+                "current_page": current_page,
+                "all_page": all_page,
+            }
         case "keyword":
             data = await fn.get_data_from_db(sessionmaker, KeyWord, "word")
-            if data:
-                q_string_per_page = 10
-                data_str = await fn.watch_data(
-                    data, sep, q_string_per_page, current_page
-                )  # type: ignore
-            else:
-                data = "Триггерные слова отсутствуют"  # type: ignore
+            data_str = None if data else "Триггерные слова отсутствуют"
 
         case "ignore":
             data = await fn.get_data_from_db(sessionmaker, IgnoredWord, "word")
-            if data:
-                q_string_per_page = 10
-                data_str = await fn.watch_data(
-                    data, sep, q_string_per_page, current_page
-                )  # type: ignore
-            else:
-                data = "Игнорируемые слова отсутствуют"  # type: ignore
-    all_page = await fn.count_page(
-        len_data=len(data), q_string_per_page=q_string_per_page
-    )
-    kwargs_for_keyboard["all_page"] = all_page
-    kwargs_for_keyboard["current_page"] = current_page
+            data_str = None if data else "Игнорируемые слова отсутствуют"
+
+    if not data_str:
+        q_string_per_page = 10
+        all_page = await fn.count_page(
+            len_data=len(data), q_string_per_page=q_string_per_page
+        )
+        current_page = current_page or all_page
+        data_str = await fn.watch_data(
+            data,
+            sep,
+            q_string_per_page,
+            current_page,  # type: ignore
+        )
+    kwargs_for_keyboard["all_page"] = all_page or 1
+    kwargs_for_keyboard["current_page"] = current_page or 1
     if isinstance(query, CallbackQuery):
         await query.message.edit_text(  # type: ignore
             text=data_str,
@@ -260,7 +261,9 @@ async def info(
         )
     await state.set_state(UserState.action)
     await state.update_data(
-        type_data=type_data, current_page=current_page, all_page=all_page
+        type_data=type_data,
+        current_page=current_page,
+        all_page=all_page,
     )
 
 
@@ -508,10 +511,9 @@ async def change_users_per_minute(
 @router.callback_query(F.data == "processed_users")
 async def get_processed_users(
     query: CallbackQuery,
-    redis: Redis,
     state: FSMContext,
     sessionmaker: async_sessionmaker,
-    user: UserManager,
+    current_page: int | None = None,
 ):
     if (
         not query.data
@@ -539,14 +541,53 @@ async def get_processed_users(
             reply_markup=await ik_back(back_to="action_with_bot"),
         )
         return
+    q_string_per_page = 20
     data = msgpack.unpackb(job.answer)
+    all_page = await fn.count_page(
+        len_data=len(data), q_string_per_page=q_string_per_page
+    )
+    current_page = current_page or all_page
     txt = data
     if isinstance(data, list):
-        txt = await fn.watch_processed_users(data, sep)
+        txt = await fn.watch_processed_users(data, sep, q_string_per_page, current_page)
+        await state.update_data(current_page=current_page, all_page=all_page)
     await query.message.edit_text(
         text=txt,
-        reply_markup=await ik_reload_processed_users(back_to="action_with_bot"),
+        reply_markup=await ik_reload_processed_users(
+            back_to="action_with_bot",
+            current_page=current_page,
+            all_page=all_page,
+        ),
     )
+
+
+@router.callback_query(F.data.split(":")[0] == "u")
+async def arrow_processed_users(
+    query: CallbackQuery,
+    redis: Redis,
+    state: FSMContext,
+    sessionmaker: async_sessionmaker,
+):
+    if (
+        not query.data
+        or not query.message
+        or isinstance(query.message, InaccessibleMessage)
+    ):
+        return
+    arrow = query.data.split(":")[1]
+    data = await state.get_data()
+    page = data.get("current_page", 1)
+    all_page = data.get("all_page", 1)
+    match arrow:
+        case "arrow_left":
+            page = page - 1 if page > 1 else all_page
+        case "arrow_right":
+            page = page + 1 if page < all_page else 1
+    try:
+        await get_processed_users(query, state, sessionmaker, current_page=page)
+    except Exception as e:
+        logger.exception(e)
+        await query.answer("Страница всего одна :(")
 
 
 @router.callback_query(UserState.action, F.data == "update_processed_users")
@@ -613,11 +654,11 @@ async def history(
         or isinstance(query.message, InaccessibleMessage)
     ):
         return
-    current_page = current_page or 1
     q_string_per_page = 10
     async with sessionmaker() as session:
         len_data = await session.scalar(select(func.count(UserAnalyzed.id)))
         all_page = await fn.count_page(len_data, q_string_per_page)
+        current_page = current_page or all_page
         user_analyzed: list[UserAnalyzed] = (
             await session.scalars(
                 select(UserAnalyzed)
