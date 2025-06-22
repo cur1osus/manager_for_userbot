@@ -671,7 +671,7 @@ async def history(
         ).all()
         t = ""
         for user in user_analyzed:
-            msg = user.additional_message[:15].replace("\n", "")
+            msg = user.additional_message[:10].replace("\n", "")
             t += f"{user.id}. {'🟢' if user.sended else '🔴'} @{user.username} - {msg}...\n"
     if not t:
         await query.message.edit_text(
