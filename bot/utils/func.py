@@ -221,6 +221,7 @@ class Function:
                 else:
                     value = Code(value).as_html() if value else "нет значения"
                 string.append(value)
+            string.reverse()
             rows.append(" - ".join(string))
         rows_str = "\n".join(rows)
         if len(rows_str) > Function.max_length_message:
