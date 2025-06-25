@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
 from typing import TYPE_CHECKING
 
@@ -28,12 +30,12 @@ from bot.keyboards.inline import (
     ik_available_bots,
     ik_back,
     ik_cancel_action,
-    ik_get_processed_users,
+    ik_folders,
     ik_history_back,
     ik_main_menu,
     ik_num_matrix_del,
     ik_num_matrix_users,
-    ik_reload_processed_users,
+    ik_processed_users,
 )
 from bot.states import UserState
 from bot.utils.func import Function as fn
@@ -509,11 +511,11 @@ async def change_users_per_minute(
 
 
 @router.callback_query(F.data == "processed_users")
-async def get_processed_users(
+async def add_job_to_get_processed_users(
     query: CallbackQuery,
     state: FSMContext,
     sessionmaker: async_sessionmaker,
-    current_page: int | None = None,
+    from_state: bool = False,
 ):
     if (
         not query.data
@@ -521,47 +523,102 @@ async def get_processed_users(
         or isinstance(query.message, InaccessibleMessage)
     ):
         return
-    bot_id = (await state.get_data())["bot_id"]
-    await state.set_state(UserState.action)
-    async with sessionmaker() as session:
-        job: Job | None = await session.scalar(
-            select(Job).where(
-                and_(Job.bot_id == bot_id, Job.task == JobName.processed_users.value)
-            )
-        )
-    if not job:
-        await query.message.edit_text(
-            text="Чтобы получить нажмите кнопку снизу",
-            reply_markup=await ik_get_processed_users(back_to="action_with_bot"),
-        )
+    if from_state:
+        folders = (await state.get_data())["folders"]
+        folders_name = [folder[0] for folder in folders]
+    else:
+        bot_id = (await state.get_data())["bot_id"]
+        await state.set_state(UserState.action)
+        job = Job(bot_id=bot_id, task=JobName.processed_users.value)
+        async with sessionmaker() as session:
+            session.add(job)
+            await session.commit()
+        async with sessionmaker() as session:
+            switch = True
+            tries = 0
+            while switch:
+                folders: Job | None = await session.scalar(  # type: ignore
+                    select(Job).where(
+                        and_(
+                            Job.bot_id == bot_id,
+                            Job.task == JobName.processed_users.value,
+                        )
+                    )
+                )
+
+                if folders and folders.answer:
+                    switch = False
+                if tries > 3:
+                    await query.message.edit_text(
+                        text="Не смог получить папки",
+                        reply_markup=await ik_back(back_to="action_with_bot"),
+                    )
+                    return
+                await asyncio.sleep(2)  # type: ignore
+                tries += 1
+        folders_unpack = msgpack.unpackb(folders.answer)  # type: ignore
+        folders_name = [folder[0] for folder in folders_unpack]
+        await state.update_data(folders=folders_unpack)
+    await query.message.edit_text(
+        text="Папки",
+        reply_markup=await ik_folders(folders_name, back_to="action_with_bot"),
+    )
+
+
+@router.callback_query(UserState.action, F.data.split(":")[0] == "folder")
+async def get_processed_users_from_folder(
+    query: CallbackQuery,
+    state: FSMContext,
+    sessionmaker: async_sessionmaker,
+    current_page: int | None = None,
+    from_state: bool = False,
+    formatting_choices: list[bool] | None = None,
+):
+    if formatting_choices is None:
+        formatting_choices = [True, True, False]
+    if (
+        not query.data
+        or not query.message
+        or isinstance(query.message, InaccessibleMessage)
+    ):
         return
-    if not job.answer:
-        await query.message.edit_text(
-            text="Задача еще не выполнена",
-            reply_markup=await ik_back(back_to="action_with_bot"),
-        )
-        return
+    if from_state:
+        folder = (await state.get_data()).get("folder", None)
+        name_folder, processed_users = folder
+    else:
+        name_target_folder = query.data.split(":")[1]
+        folders = (await state.get_data())["folders"]
+        name_folder, processed_users = [
+            i for i in folders if i[0] == name_target_folder
+        ][0]
     q_string_per_page = 20
-    data = msgpack.unpackb(job.answer)
     all_page = await fn.count_page(
-        len_data=len(data), q_string_per_page=q_string_per_page
+        len_data=len(processed_users), q_string_per_page=q_string_per_page
     )
     current_page = current_page or all_page
-    txt = data
-    if isinstance(data, list):
-        txt = await fn.watch_processed_users(data, sep, q_string_per_page, current_page)
-        await state.update_data(current_page=current_page, all_page=all_page)
-    await query.message.edit_text(
-        text=txt,
-        reply_markup=await ik_reload_processed_users(
-            back_to="action_with_bot",
+    txt = processed_users or "Нет людей"
+    if isinstance(txt, list):
+        txt = await fn.watch_processed_users(
+            processed_users, sep, q_string_per_page, current_page, formatting_choices
+        )
+        await state.update_data(
             current_page=current_page,
             all_page=all_page,
+            folder=[name_folder, processed_users],
+        )
+    await state.update_data(formatting_choices=formatting_choices)
+    await query.message.edit_text(
+        text=txt,
+        reply_markup=await ik_processed_users(
+            back_to="folders",
+            current_page=current_page,
+            all_page=all_page,
+            choices=formatting_choices,
         ),
     )
 
 
-@router.callback_query(F.data.split(":")[0] == "u")
+@router.callback_query(UserState.action, F.data.split(":")[0] == "u")
 async def arrow_processed_users(
     query: CallbackQuery,
     redis: Redis,
@@ -584,61 +641,43 @@ async def arrow_processed_users(
         case "arrow_right":
             page = page + 1 if page < all_page else 1
     try:
-        await get_processed_users(query, state, sessionmaker, current_page=page)
+        await get_processed_users_from_folder(
+            query, state, sessionmaker, current_page=page, from_state=True
+        )
     except Exception as e:
         logger.exception(e)
         await query.answer("Страница всего одна :(")
 
 
-@router.callback_query(UserState.action, F.data == "update_processed_users")
-async def update_job_to_get_processed_users(
+@router.callback_query(
+    UserState.action, F.data.in_(["f_username", "f_first_name", "f_copy"])
+)
+async def formatting_(
     query: CallbackQuery,
     state: FSMContext,
     sessionmaker: async_sessionmaker,
+    current_page: int | None = None,
 ):
-    if (
-        not query.data
-        or not query.message
-        or isinstance(query.message, InaccessibleMessage)
-    ):
-        return
-    bot_id = (await state.get_data())["bot_id"]
-    new_job = Job(bot_id=bot_id, task=JobName.processed_users.value)
-    async with sessionmaker() as session:
-        await session.execute(
-            delete(Job).where(
-                and_(Job.bot_id == bot_id, Job.task == JobName.processed_users.value)
-            )
+    formatting_choices: list[bool] = (await state.get_data()).get(
+        "formatting_choices", None
+    )
+    if query.data == "f_first_name":
+        formatting_choices[0] = not formatting_choices[0]
+    elif query.data == "f_username":
+        formatting_choices[1] = not formatting_choices[1]
+    elif query.data == "f_copy":
+        formatting_choices[2] = not formatting_choices[2]
+    if formatting_choices[0] is False and formatting_choices[1] is False:
+        formatting_choices[0] = True
+    with contextlib.suppress(Exception):
+        await get_processed_users_from_folder(
+            query,
+            state,
+            sessionmaker,
+            current_page=None,
+            from_state=True,
+            formatting_choices=formatting_choices,
         )
-        session.add(new_job)
-        await session.commit()
-    await query.message.edit_text(
-        text="Задача добавлена и будет выполнена через 5 секунд",
-        reply_markup=await ik_back(back_to="action_with_bot"),
-    )
-
-
-@router.callback_query(UserState.action, F.data == "get_processed_users")
-async def add_job_to_get_processed_users(
-    query: CallbackQuery,
-    state: FSMContext,
-    sessionmaker: async_sessionmaker,
-):
-    if (
-        not query.data
-        or not query.message
-        or isinstance(query.message, InaccessibleMessage)
-    ):
-        return
-    bot_id = (await state.get_data())["bot_id"]
-    job = Job(bot_id=bot_id, task=JobName.processed_users.value)
-    async with sessionmaker() as session:
-        session.add(job)
-        await session.commit()
-    await query.message.edit_text(
-        text="Задача добавлена и будет выполнена через 5 секунд",
-        reply_markup=await ik_back(back_to="action_with_bot"),
-    )
 
 
 @router.callback_query(F.data == "history")
@@ -787,6 +826,13 @@ async def back_action(
                     current_page=current_page, all_page=all_page
                 )
             )
+        case "folders":
+            await add_job_to_get_processed_users(
+                query,
+                state,
+                sessionmaker,
+                from_state=True,
+            )
 
 
 @router.callback_query(F.data == "bots")
@@ -800,6 +846,8 @@ async def show_bots(
     bots_data = await fn.get_available_bots(sessionmaker)
     async with sessionmaker() as session:
         for bot in bots_data:
+            if bot.name:
+                continue
             job = Job(task=JobName.get_me_name.value, bot_id=bot.id)
             session.add(job)
         await session.commit()

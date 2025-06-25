@@ -199,39 +199,37 @@ class Function:
         sep: str,
         q_string_per_page: int,
         page: int,
+        formatting,
     ):
         processed_users = processed_users[
             (page - 1) * q_string_per_page : page * q_string_per_page
         ]
+        first_name, username, copy = formatting
         rows = []
         for i in processed_users:
-            del i["id"]
-            del i["last_name"]
-            del i["phone"]
             string = []
             for name, value in i.items():
+                logger.info(name)
+                if name in ["id", "phone", "last_name"]:
+                    continue
+                if not username and name == "username":
+                    continue
+                if not first_name and name == "first_name":
+                    continue
                 if name == "username":
                     value = f"@{value}" if value else "@нет"
-                # elif name == "id":
-                #     value = TextLink(value, url=f"tg://user?id={value}").as_html()
-                #     continue
-                # elif name == "phone":
-                #     value = f"+{value}" if value else "нет"
-                #     value = Code(value).as_html()
                 else:
-                    value = Code(value).as_html() if value else "нет значения"
+                    value = value or "нет значения"
+                    value = value if copy else Code(value).as_html()
                 string.append(value)
             string.reverse()
             rows.append(" - ".join(string))
         rows_str = "\n".join(rows)
         if len(rows_str) > Function.max_length_message:
             return await Function.watch_processed_users(
-                processed_users,
-                sep,
-                q_string_per_page - 1,
-                page,
+                processed_users, sep, q_string_per_page - 1, page, formatting
             )
-        return rows_str
+        return Code(rows_str).as_html() if copy else rows_str
 
     @staticmethod
     def get_log(file_path, line_count=20) -> list[str] | str:
