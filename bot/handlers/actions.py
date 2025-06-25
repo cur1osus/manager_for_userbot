@@ -537,6 +537,7 @@ async def add_job_to_get_processed_users(
             switch = True
             tries = 0
             while switch:
+                await query.message.edit_text(text="Получаю папки", reply_markup=None)
                 folders: Job | None = await session.scalar(  # type: ignore
                     select(Job).where(
                         and_(
@@ -545,7 +546,12 @@ async def add_job_to_get_processed_users(
                         )
                     )
                 )
-
+                await asyncio.sleep(1)
+                await query.message.edit_text(text="Получаю папки.")
+                await asyncio.sleep(1)
+                await query.message.edit_text(text="Получаю папки..")
+                await asyncio.sleep(1)
+                await query.message.edit_text(text="Получаю папки...")
                 if folders and folders.answer:
                     switch = False
                 if tries > 3:
@@ -554,7 +560,6 @@ async def add_job_to_get_processed_users(
                         reply_markup=await ik_back(back_to="action_with_bot"),
                     )
                     return
-                await asyncio.sleep(2)  # type: ignore
                 tries += 1
         folders_unpack = msgpack.unpackb(folders.answer)  # type: ignore
         folders_name = [folder[0] for folder in folders_unpack]
