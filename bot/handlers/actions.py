@@ -534,6 +534,7 @@ async def add_job_to_get_processed_users(
             session.add(job)
 
         async with sessionmaker() as session:
+            await session.expire_all()
             switch = True
             tries = 0
             while switch:
