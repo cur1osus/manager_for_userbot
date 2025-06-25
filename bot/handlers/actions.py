@@ -533,7 +533,6 @@ async def add_job_to_get_processed_users(
         async with sessionmaker() as session:
             session.add(job)
             await session.commit()
-        async with sessionmaker() as session:
             switch = True
             tries = 0
             while switch:
@@ -808,6 +807,20 @@ async def back_action(
             await state.clear()
         case "action_with_bot":
             data = await state.get_data()
+            bot_id = data.get("bot_id")
+            if bot_id:
+                async with sessionmaker() as session:
+                    await session.execute(
+                        delete(Job).where(
+                            (
+                                and_(
+                                    Job.bot_id == bot_id,
+                                    Job.task == JobName.processed_users.value,
+                                )
+                            )
+                        )
+                    )
+                    await session.commit()
             await query.message.edit_text(
                 "Боты", reply_markup=await ik_action_with_bot()
             )
