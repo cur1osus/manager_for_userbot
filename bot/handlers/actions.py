@@ -534,7 +534,6 @@ async def add_job_to_get_processed_users(
             session.add(job)
 
         async with sessionmaker() as session:
-            await session.expire_all()
             switch = True
             tries = 0
             while switch:
@@ -548,6 +547,7 @@ async def add_job_to_get_processed_users(
                         )
                     )
                 )
+                await session.refresh(folders)
                 await asyncio.sleep(1)
                 await query.message.edit_text(text="Получаю папки.")
                 await asyncio.sleep(1)
