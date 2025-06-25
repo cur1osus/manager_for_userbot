@@ -47,7 +47,7 @@ async def create_db_session_pool(
         pool_recycle=900,
     )
 
-    return engine, async_sessionmaker(engine, expire_on_commit=False)
+    return engine, async_sessionmaker(engine, expire_on_commit=True)
 
 
 async def init_db(engine: AsyncEngine) -> None:

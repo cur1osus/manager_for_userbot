@@ -532,13 +532,12 @@ async def add_job_to_get_processed_users(
         async with sessionmaker() as session:
             job = Job(bot_id=bot_id, task=JobName.processed_users.value)
             session.add(job)
-
-        async with sessionmaker() as session:
-            switch = True
-            tries = 0
-            while switch:
-                logger.info(bot_id)
-                await query.message.edit_text(text="Получаю папки", reply_markup=None)
+            await session.commit()
+        switch = True
+        tries = 0
+        while switch:
+            await query.message.edit_text(text="Получаю папки", reply_markup=None)
+            async with sessionmaker() as session:
                 folders: Job | None = await session.scalar(  # type: ignore
                     select(Job).where(
                         and_(
@@ -547,22 +546,22 @@ async def add_job_to_get_processed_users(
                         )
                     )
                 )
-                await session.refresh(folders)
-                await asyncio.sleep(1)
-                await query.message.edit_text(text="Получаю папки.")
-                await asyncio.sleep(1)
-                await query.message.edit_text(text="Получаю папки..")
-                await asyncio.sleep(1)
-                await query.message.edit_text(text="Получаю папки...")
-                if folders and folders.answer:
-                    switch = False
-                if tries > 3:
-                    await query.message.edit_text(
-                        text="Не смог получить папки",
-                        reply_markup=await ik_back(back_to="action_with_bot"),
-                    )
-                    return
-                tries += 1
+            logger.info(folders)
+            await asyncio.sleep(1)
+            await query.message.edit_text(text="Получаю папки.")
+            await asyncio.sleep(1)
+            await query.message.edit_text(text="Получаю папки..")
+            await asyncio.sleep(1)
+            await query.message.edit_text(text="Получаю папки...")
+            if folders and folders.answer:
+                switch = False
+            if tries > 3:
+                await query.message.edit_text(
+                    text="Не смог получить папки",
+                    reply_markup=await ik_back(back_to="action_with_bot"),
+                )
+                return
+            tries += 1
         folders_unpack = msgpack.unpackb(folders.answer)  # type: ignore
         folders_name = [folder[0] for folder in folders_unpack]
         await state.update_data(folders=folders_unpack)
