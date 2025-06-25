@@ -529,14 +529,15 @@ async def add_job_to_get_processed_users(
     else:
         bot_id = (await state.get_data())["bot_id"]
         await state.set_state(UserState.action)
-        job = Job(bot_id=bot_id, task=JobName.processed_users.value)
         async with sessionmaker() as session:
+            job = Job(bot_id=bot_id, task=JobName.processed_users.value)
             session.add(job)
-            await session.commit()
-            await session.expire_all()
+
+        async with sessionmaker() as session:
             switch = True
             tries = 0
             while switch:
+                logger.info(bot_id)
                 await query.message.edit_text(text="Получаю папки", reply_markup=None)
                 folders: Job | None = await session.scalar(  # type: ignore
                     select(Job).where(
