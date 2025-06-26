@@ -224,7 +224,7 @@ class Function:
                 string.append(value)
             string.reverse()
             rows.append(" - ".join(string))
-        rows_str = "\n".join(rows)
+        rows_str = "\n\n".join(rows)
         if len(rows_str) > Function.max_length_message:
             return await Function.watch_processed_users(
                 processed_users, sep, q_string_per_page - 1, page, formatting
