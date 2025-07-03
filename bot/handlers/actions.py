@@ -517,7 +517,8 @@ async def add_job_to_get_processed_users(
         text="Папки",
         reply_markup=await ik_folders(choice_folders, back_to="action_with_bot"),
     )
-    await get_processed_users_from_folder(query, user, state, session, sessionmaker)
+    async with sessionmaker() as new_session:
+        await get_processed_users_from_folder(query, user, state, new_session, sessionmaker)
 
 
 @router.callback_query(UserState.action, F.data.split(":")[0] == "folder")
