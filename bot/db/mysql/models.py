@@ -150,7 +150,7 @@ class UserManager(Base):
         cascade="all, delete-orphan",
     )
 
-    async def get_obj_bot(self, bot_id: int) -> "Bot" | None:
+    async def get_obj_bot(self, bot_id: int) -> Bot | None:
         r: list[Bot] = [bot for bot in self.bots if bot.id == bot_id]
         return r[0] if r else None
 
