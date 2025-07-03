@@ -1,16 +1,15 @@
-from typing import Any
+from enum import Enum
+from typing import Any, Never
+
 from sqlalchemy import (
     BigInteger,
     ForeignKey,
     String,
-    desc,
 )
-from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.mysql import BLOB
-from enum import Enum
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
-from sqlalchemy.orm import relationship
 
 
 class Bot(Base):
@@ -151,8 +150,10 @@ class UserManager(Base):
         cascade="all, delete-orphan",
     )
 
-    async def get_obj_bot(self, bot_id: int) -> "Bot":
-        return [bot for bot in self.bots if bot.id == bot_id][0]
+    async def get_obj_bot(self, bot_id: int) -> "Bot" | None:
+        r: list[Bot] = [bot for bot in self.bots if bot.id == bot_id]
+        return r[0] if r else None
 
-    async def get_obj_by_id(self, id: int, list_obj: list[Any]) -> Any:
-        return [i for i in list_obj if i.id == id][0]
+    async def get_obj_by_id(self, id: int, list_obj: list[Any]) -> Any | None:
+        r = [i for i in list_obj if i.id == id]
+        return r[0] if r else None

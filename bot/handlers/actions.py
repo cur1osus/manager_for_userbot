@@ -61,6 +61,8 @@ async def manage_bot(
 ) -> None:
     bot_id = int(query.data.split(":")[1])
     bot = await user.get_obj_bot(bot_id)
+    if not bot:
+        return await query.message.edit_text(text="Нет доступа")
     await state.update_data(bot_id=bot_id)
     if bot.is_connected:
         await query.message.edit_text(
@@ -337,7 +339,7 @@ async def processing_message_to_add(
         case "chat":
             bot_id = (await state.get_data())["bot_id"]
             bot = await user.get_obj_bot(bot_id)
-            chats = bot.awaitable_attrs.chats
+            chats = await bot.awaitable_attrs.chats
             data_to_add = await fn.collapse_repeated_data([i.chat_id for i in chats], data_to_add)
             chats.extend([MonitoringChat(chat_id=i) for i in data_to_add])
             job = Job(task=JobName.get_chat_title.value, bot=bot)
@@ -486,7 +488,7 @@ async def add_job_to_get_processed_users(
                 .order_by(Job.id.desc())
                 .limit(1)
             )
-        sleep_sec = 0.5
+        sleep_sec = 0.2
         await asyncio.sleep(sleep_sec)
         await query.message.edit_text(text="Получаю названия папок 🌥", reply_markup=None)
         await asyncio.sleep(sleep_sec)
@@ -508,13 +510,14 @@ async def add_job_to_get_processed_users(
 
     raw_folders: list[dict[str, str]] = msgpack.unpackb(job.answer)
     name_folders = [i["name"] for i in raw_folders]
-    choice_folders = {i: False for i in name_folders}
+    choice_folders = {i: True for i in name_folders}
 
     await state.update_data(choice_folders=choice_folders, raw_folders=raw_folders)
     await query.message.edit_text(
         text="Папки",
         reply_markup=await ik_folders(choice_folders, back_to="action_with_bot"),
     )
+    await get_processed_users_from_folder(query, user, state, session, sessionmaker)
 
 
 @router.callback_query(UserState.action, F.data.split(":")[0] == "folder")
@@ -570,7 +573,7 @@ async def get_processed_users_from_folder(
                     .order_by(Job.id.desc())
                     .limit(1)
                 )
-            sleep_sec = 0.5
+            sleep_sec = 0.2
             await asyncio.sleep(sleep_sec)
             await query.message.edit_text(text="Получаю папки 😐", reply_markup=None)
             await asyncio.sleep(sleep_sec)
@@ -683,7 +686,7 @@ async def history(
     session: AsyncSession,
     current_page: int | None = None,
 ) -> None:
-    q_string_per_page = 10
+    q_string_per_page = 15
     len_data = await session.scalar(select(func.count(UserAnalyzed.id)))
     if not len_data:
         await query.message.edit_text(text="История пуста", reply_markup=await ik_back())
@@ -701,9 +704,11 @@ async def history(
         )
     ).all()
     t = ""
-    for user in user_analyzed:
-        msg = user.additional_message[:10].replace("\n", "")
-        t += f"{user.id}. {'🟢' if user.sended else '🔴'} @{user.username} - {msg}...\n"
+    for _user in user_analyzed:
+        msg = _user.additional_message[:10].replace("\n", "")
+        if not _user.sended:
+            continue
+        t += f"{_user.id}. @{_user.username} - {msg}...\n"
     if len(t) > fn.max_length_message:
         t = t[: fn.max_length_message - 4]
         t += "..."
