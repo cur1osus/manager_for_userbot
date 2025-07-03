@@ -488,7 +488,7 @@ async def add_job_to_get_processed_users(
                 .order_by(Job.id.desc())
                 .limit(1)
             )
-        sleep_sec = 0.2
+        sleep_sec = 0.5
         await asyncio.sleep(sleep_sec)
         await query.message.edit_text(text="Получаю названия папок 🌥", reply_markup=None)
         await asyncio.sleep(sleep_sec)
@@ -517,8 +517,6 @@ async def add_job_to_get_processed_users(
         text="Папки",
         reply_markup=await ik_folders(choice_folders, back_to="action_with_bot"),
     )
-    async with sessionmaker() as new_session:
-        await get_processed_users_from_folder(query, user, state, new_session, sessionmaker)
 
 
 @router.callback_query(UserState.action, F.data.split(":")[0] == "folder")
@@ -563,7 +561,7 @@ async def get_processed_users_from_folder(
         while switch:
             await query.message.edit_text(text="Получаю папки", reply_markup=None)
             async with sessionmaker() as session:
-                sleep_sec = 0.7
+                sleep_sec = 0.5
                 await asyncio.sleep(sleep_sec)
                 await query.message.edit_text(text="Получаю папки 😐", reply_markup=None)
                 await asyncio.sleep(sleep_sec)
