@@ -573,7 +573,7 @@ async def get_processed_users_from_folder(
                     .order_by(Job.id.desc())
                     .limit(1)
                 )
-            sleep_sec = 0.2
+            sleep_sec = 0.7
             await asyncio.sleep(sleep_sec)
             await query.message.edit_text(text="Получаю папки 😐", reply_markup=None)
             await asyncio.sleep(sleep_sec)
