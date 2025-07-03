@@ -563,6 +563,16 @@ async def get_processed_users_from_folder(
         while switch:
             await query.message.edit_text(text="Получаю папки", reply_markup=None)
             async with sessionmaker() as session:
+                sleep_sec = 0.7
+                await asyncio.sleep(sleep_sec)
+                await query.message.edit_text(text="Получаю папки 😐", reply_markup=None)
+                await asyncio.sleep(sleep_sec)
+                await query.message.edit_text(text="Получаю папки 😐🙂")
+                await asyncio.sleep(sleep_sec)
+                await query.message.edit_text(text="Получаю папки 😐🙂😁")
+                await asyncio.sleep(sleep_sec)
+                await query.message.edit_text(text="Получаю папки 😐🙂😁😆")
+                await asyncio.sleep(sleep_sec)
                 job: Job | None = await session.scalar(
                     select(Job)
                     .where(
@@ -574,16 +584,7 @@ async def get_processed_users_from_folder(
                     .order_by(Job.id.desc())
                     .limit(1)
                 )
-            sleep_sec = 0.7
-            await asyncio.sleep(sleep_sec)
-            await query.message.edit_text(text="Получаю папки 😐", reply_markup=None)
-            await asyncio.sleep(sleep_sec)
-            await query.message.edit_text(text="Получаю папки 😐🙂")
-            await asyncio.sleep(sleep_sec)
-            await query.message.edit_text(text="Получаю папки 😐🙂😁")
-            await asyncio.sleep(sleep_sec)
-            await query.message.edit_text(text="Получаю папки 😐🙂😁😆")
-            await asyncio.sleep(sleep_sec)
+
             if job and job.answer:
                 switch = False
             if tries > 3:
