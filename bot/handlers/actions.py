@@ -349,7 +349,7 @@ async def processing_message_to_add(
         case "keyword":
             keywords = await user.awaitable_attrs.keywords
             data_to_add = await fn.collapse_repeated_data([i.word for i in keywords], data_to_add)
-            await keywords.extend([KeyWord(word=i) for i in data_to_add])
+            keywords.extend([KeyWord(word=i) for i in data_to_add])
     await session.commit()
     current_page = (await state.get_data())["current_page"]
     await info(
