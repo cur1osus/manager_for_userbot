@@ -19,6 +19,7 @@ from aiogram.types import BotCommand
 from bot import errors, handlers
 from bot.db.mysql.base import close_db, create_db_session_pool, init_db
 from bot.middlewares.check_user_middleware import CheckUserMiddleware
+from bot.middlewares.db_session import DBSessionMiddleware
 from bot.settings import Settings
 from bot.scheduler import default_scheduler as scheduler
 from bot.background_jobs import job_sec
@@ -31,19 +32,16 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-async def startup(
-    dispatcher: Dispatcher, bot: Bot, settings: Settings, redis: Redis
-) -> None:
+async def startup(dispatcher: Dispatcher, bot: Bot, settings: Settings, redis: Redis) -> None:
     await bot.delete_webhook(drop_pending_updates=True)
 
     engine, db_session = await create_db_session_pool(settings)
 
     await init_db(engine)
 
-    dispatcher.workflow_data.update(
-        {"sessionmaker": db_session, "db_session_closer": partial(close_db, engine)}
-    )
+    dispatcher.workflow_data.update({"sessionmaker": db_session, "db_session_closer": partial(close_db, engine)})
 
+    dispatcher.update.outer_middleware(DBSessionMiddleware(session_pool=db_session))
     dispatcher.update.outer_middleware(CheckUserMiddleware())
 
     logger.info("Bot started")
@@ -61,7 +59,7 @@ async def start_scheduler() -> None:
         await asyncio.sleep(1)
 
 
-async def set_default_commands(bot: Bot):
+async def set_default_commands(bot: Bot) -> None:
     await bot.set_my_commands(
         [
             BotCommand(command="start", description="start"),
@@ -72,7 +70,7 @@ async def set_default_commands(bot: Bot):
 
 
 async def main() -> None:
-    settings = Settings()  # type: ignore
+    settings = Settings()
 
     api = PRODUCTION
 
@@ -96,6 +94,7 @@ async def main() -> None:
         redis=storage.redis,
         developer_id=settings.developer_id,
     )
+
     dp.include_routers(handlers.router, errors.router)
     dp.startup.register(startup)
     dp.shutdown.register(shutdown)

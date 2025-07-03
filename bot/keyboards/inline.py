@@ -19,22 +19,18 @@ async def ik_main_menu() -> InlineKeyboardMarkup:
     builder.button(text="🚷 Баны", callback_data="info:ban")
     builder.button(text="❗️Тригеры", callback_data="info:keyword")
     builder.button(text="🗣 Ответы", callback_data="info:answer")
-    builder.button(
-        text="🏃🏼‍➡️ Пропускная способность", callback_data="users_per_minute"
-    )
+    builder.button(text="🏃🏼‍➡️ Пропускная способность", callback_data="users_per_minute")
     builder.button(text="🔍 История", callback_data="history")
     builder.adjust(2, 2, 2, 1)
     return builder.as_markup()
 
 
-async def ik_available_bots(
-    bots_data: list[Bot], back_to: str = "default"
-) -> InlineKeyboardMarkup:
+async def ik_available_bots(bots_data: list[Bot], back_to: str = "default") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     if bots_data:
         for bot in bots_data:
             builder.button(
-                text=f"{'🟢' if bot.is_started else '🔴'} {bot.phone} ({bot.name or 'имя загружается...'})",
+                text=f"{'❇️' if bot.is_connected else '⛔️'} {'🟢' if bot.is_started else '🔴'} {bot.phone} ({bot.name or '🌀'})",
                 callback_data=f"bot_id:{bot.id}",
             )
     builder.button(text="<-", callback_data=f"back:{back_to}")
@@ -44,7 +40,7 @@ async def ik_available_bots(
 
 async def ik_action_with_bot(back_to: str = "default") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text="🗑 Удалить", callback_data="delete")
+    builder.button(text="⛓️‍💥 Отключить", callback_data="delete")
     # builder.button(text="🔄 РеСтарт", callback_data="restart_bot")
     builder.button(text="🟢 Старт", callback_data="start")
     builder.button(text="🔴 Стоп", callback_data="stop")
@@ -74,9 +70,7 @@ async def ik_add_or_delete(
     builder = InlineKeyboardBuilder()
     adjust = []
     if all_page:
-        builder.button(
-            text=f"{current_page} / {all_page}", callback_data="info_about_pages"
-        )
+        builder.button(text=f"{current_page} / {all_page}", callback_data="info_about_pages")
         adjust.append(1)
     if all_page > 1:
         builder.button(text="<--", callback_data="arrow_left")
@@ -92,9 +86,7 @@ async def ik_add_or_delete(
 limit_button: Final = 80
 
 
-async def ik_num_matrix_del(
-    ids: list[str], back_to: str = "default"
-) -> InlineKeyboardMarkup:
+async def ik_num_matrix_del(ids: list[str], back_to: str = "default") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     start = 0
     if len(ids) > limit_button:
@@ -110,7 +102,7 @@ async def ik_num_matrix_del(
 max_users_per_minute: Final = 30
 
 
-async def ik_num_matrix_users(current_choose: int, back_to: str = "default"):
+async def ik_num_matrix_users(current_choose: int, back_to: str = "default") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for i in range(1, max_users_per_minute + 1):
         if current_choose == i:
@@ -127,34 +119,30 @@ async def ik_processed_users(
     current_page: int,
     choices: list[bool],
     back_to: str = "default",
-):
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     adjust = []
     if all_page:
-        builder.button(
-            text=f"{current_page} / {all_page}", callback_data="info_about_pages"
-        )
+        builder.button(text=f"{current_page} / {all_page}", callback_data="info_about_pages")
         adjust.append(1)
     if all_page > 1:
         builder.button(text="<--", callback_data="u:arrow_left")
         builder.button(text="-->", callback_data="u:arrow_right")
         adjust.append(2)
     n, u, c = choices
-    builder.button(text=f"n {'🔘' if n else ''}", callback_data="f_first_name")
-    builder.button(text=f"u {'🔘' if u else ''}", callback_data="f_username")
-    builder.button(text=f"c {'🔘' if c else ''}", callback_data="f_copy")
+    builder.button(text=f"n{'🔘' if n else ''}", callback_data="f_first_name")
+    builder.button(text=f"u{'🔘' if u else ''}", callback_data="f_username")
+    builder.button(text=f"c{'🔘' if c else ''}", callback_data="f_copy")
     builder.button(text="<-", callback_data=f"back:{back_to}")
     builder.adjust(*adjust, 3, 1)
     return builder.as_markup()
 
 
-async def ik_history_back(all_page: int, current_page: int, back_to: str = "default"):
+async def ik_history_back(all_page: int, current_page: int, back_to: str = "default") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     adjust = []
     if all_page:
-        builder.button(
-            text=f"{current_page} / {all_page}", callback_data="info_about_pages"
-        )
+        builder.button(text=f"{current_page} / {all_page}", callback_data="info_about_pages")
         adjust.append(1)
     if all_page > 1:
         builder.button(text="<--", callback_data="h:arrow_left")
@@ -165,12 +153,12 @@ async def ik_history_back(all_page: int, current_page: int, back_to: str = "defa
     return builder.as_markup()
 
 
-async def ik_back(back_to: str = "default"):
+async def ik_back(back_to: str = "default") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="Назад",
+                    text="<-",
                     callback_data=f"back:{back_to}",
                 )
             ],
@@ -178,10 +166,30 @@ async def ik_back(back_to: str = "default"):
     )
 
 
-async def ik_folders(folders_name: list[str], back_to: str = "default"):
+async def ik_connect_bot(back_to: str = "default") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    for folder_name in folders_name:
-        builder.button(text=folder_name, callback_data=f"folder:{folder_name}")
+    builder.button(text="❇️ Подключить", callback_data="connect")
+    builder.button(text="<-", callback_data=f"back:{back_to}")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+async def ik_folders(folders: dict[str, bool], back_to: str = "default") -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    if folders:
+        for folder_name, is_chosen in folders.items():
+            builder.button(text=f"{folder_name}{'🔘' if is_chosen else ''}", callback_data=f"folder:{folder_name}")
+        builder.button(text="✔️ Подтвердить выбор", callback_data="accept_folders")
+    builder.button(text="<-", callback_data=f"back:{back_to}")
+    builder.adjust(2)
+    return builder.as_markup()
+
+
+async def ik_folders_with_users(folders: list[str], back_to: str = "default") -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    if folders:
+        for folder_name in folders:
+            builder.button(text=f"{folder_name}", callback_data=f"target_folder:{folder_name}")
     builder.button(text="<-", callback_data=f"back:{back_to}")
     builder.adjust(2)
     return builder.as_markup()

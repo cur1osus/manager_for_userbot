@@ -57,3 +57,53 @@ dependencies = [
     "uvloop==0.21.0 ; sys_platform == 'darwin' or sys_platform == 'linux'",
     "yarl==1.18.3",
 ]
+
+[tool.mypy]
+python_version = "3.12"
+mypy_path = "src_zoo_park"
+plugins = ["sqlalchemy.ext.mypy.plugin"]
+allow_redefinition = true
+check_untyped_defs = true
+disallow_any_generics = true
+disallow_incomplete_defs = true
+disallow_untyped_calls = true
+disallow_untyped_defs = true
+extra_checks = true
+follow_imports = "skip"
+follow_imports_for_stubs = false
+ignore_missing_imports = false
+namespace_packages = true
+no_implicit_optional = true
+no_implicit_reexport = true
+pretty = true
+show_absolute_path = true
+show_error_codes = true
+show_error_context = true
+warn_redundant_casts = true
+warn_unused_configs = true
+warn_unused_ignores = true
+
+disable_error_code = ["no-redef"]
+
+exclude = ["\\.?venv", "\\.idea", "\\.tests?"]
+
+
+[tool.ruff]
+src = ["src_zoo_park"]
+line-length = 120
+exclude = [
+    ".git",
+    ".mypy_cache",
+    ".ruff_cache",
+    "__pypackages__",
+    "__pycache__",
+    "*.pyi",
+    "venv",
+    ".venv",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"

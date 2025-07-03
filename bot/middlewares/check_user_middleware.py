@@ -19,22 +19,22 @@ class CheckUserMiddleware(BaseMiddleware):
     async def __call__(
         self,
         handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],
-        event: Update,  # type: ignore
+        event: Update,
         data: dict[str, Any],
     ) -> Any:
-        user: User = data.get("event_from_user")  # type: ignore
+        user: User = data.get("event_from_user")
 
         match event.event_type:
             case "message":
                 if user.is_bot is False and user.id != TG_SERVICE_USER_ID:
                     data["user"] = await _get_user_manager_model(
-                        data["sessionmaker"],
+                        data["session"],
                         user.id,
                     )
             case "callback_query":
                 if user.is_bot is False and user.id != TG_SERVICE_USER_ID:
                     data["user"] = await _get_user_manager_model(
-                        data["sessionmaker"],
+                        data["session"],
                         user.id,
                     )
 

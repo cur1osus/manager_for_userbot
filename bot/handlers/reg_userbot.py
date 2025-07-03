@@ -9,14 +9,14 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import any_state
 from aiogram.types import CallbackQuery, InaccessibleMessage
 from aiogram.types.reply_keyboard_remove import ReplyKeyboardRemove
-from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from bot.db.mysql.models import Bot, Job, JobName
+from bot.db.mysql.models import Bot, Job, JobName, UserManager
 from bot.keyboards.inline import ik_main_menu
 from bot.keyboards.reply import rk_cancel
 from bot.states import UserState
-from bot.utils.func import Function as fn
-from bot.utils.manager import bot_has_started, start_bot
+from bot.utils import fn
+from bot.utils.manager import start_bot
 
 if TYPE_CHECKING:
     from aiogram.types import Message
@@ -28,39 +28,36 @@ path_to_folder = "sessions"
 
 
 @router.message(any_state, F.text == "Отмена")
-async def cancel_reg(
-    message: Message, redis: Redis, state: FSMContext, sessionmaker: async_sessionmaker
-):
+async def cancel_reg(message: Message, redis: Redis, state: FSMContext, sessionmaker: async_sessionmaker) -> None:
     await state.clear()
     await message.answer("Добавление бота отменено", reply_markup=ReplyKeyboardRemove())
-    await message.answer("Главное меню", reply_markup=await ik_main_menu())
+    msg = await message.answer("Главное меню", reply_markup=await ik_main_menu())
+    await fn.set_general_message(state, msg)
 
 
 @router.callback_query(F.data == "add_new_bot")
-async def process_add_new_bot(query: CallbackQuery, redis: Redis, state: FSMContext):
-    if not query.message or isinstance(query.message, InaccessibleMessage):
-        return
+async def process_add_new_bot(query: CallbackQuery, user: UserManager, redis: Redis, state: FSMContext) -> None:
     await query.message.delete()
     await query.message.answer("Введите api_id", reply_markup=await rk_cancel())
     await state.set_state(UserState.enter_api_id)
 
 
 @router.message(UserState.enter_api_id)
-async def process_enter_api_id(message: Message, redis: Redis, state: FSMContext):
+async def process_enter_api_id(message: Message, redis: Redis, state: FSMContext) -> None:
     await state.update_data(api_id=message.text)
     await message.answer("Введите api_hash", reply_markup=None)
     await state.set_state(UserState.enter_api_hash)
 
 
 @router.message(UserState.enter_api_hash)
-async def process_enter_api_hash(message: Message, redis: Redis, state: FSMContext):
+async def process_enter_api_hash(message: Message, redis: Redis, state: FSMContext) -> None:
     await state.update_data(api_hash=message.text)
     await message.answer("Введите phone", reply_markup=None)
     await state.set_state(UserState.enter_phone)
 
 
 @router.message(UserState.enter_phone)
-async def process_enter_phone(message: Message, redis: Redis, state: FSMContext):
+async def process_enter_phone(message: Message, redis: Redis, state: FSMContext) -> None:
     await state.update_data(phone=message.text)
     data = await state.get_data()
     api_id = data["api_id"]
@@ -87,7 +84,6 @@ async def process_enter_phone(message: Message, redis: Redis, state: FSMContext)
     await state.update_data(
         phone_code_hash=phone_code_hash,
         path_session=path_session,
-        path_to_folder=path_to_folder,
     )
     await message.answer("Введите code", reply_markup=None)
     await state.set_state(UserState.enter_code)
@@ -95,9 +91,14 @@ async def process_enter_phone(message: Message, redis: Redis, state: FSMContext)
 
 @router.message(UserState.enter_code)
 async def process_enter_code(
-    message: Message, redis: Redis, state: FSMContext, sessionmaker: async_sessionmaker
-):
+    message: Message, redis: Redis, state: FSMContext, session: AsyncSession, user: UserManager
+) -> None:
     data = await state.get_data()
+
+    is_password = data.get("is_password", False)
+    code = data["code"] if is_password else message.text
+    password = message.text if is_password else None
+
     api_id = data["api_id"]
     api_hash = data["api_hash"]
     phone = data["phone"]
@@ -107,72 +108,39 @@ async def process_enter_code(
         return
     r = await fn.create_telethon_session(
         phone,
-        message.text,
+        code,
         int(api_id),
         api_hash,
         phone_code_hash,
-        None,
+        password,
         path_session,
     )
     if r.message == "password":
         await message.answer("Введите пароль", reply_markup=None)
-        await state.set_state(UserState.enter_password)
+        await state.update_data(code=message.text, is_password=True)
         return
-
-    async with sessionmaker() as session:
-        bot = Bot(
-            api_id=int(api_id),
-            api_hash=api_hash,
-            phone=phone,
-            path_session=path_session,
-        )
-        session.add(bot)
-        await session.commit()
-    await start_bot(phone, path_to_folder)
-    await message.answer("Бот подключен и запущен", reply_markup=ReplyKeyboardRemove())
-    await state.clear()
-
-
-@router.message(UserState.enter_password)
-async def process_enter_password(
-    message: Message, redis: Redis, state: FSMContext, sessionmaker: async_sessionmaker
-):
-    data = await state.get_data()
-    api_id = data["api_id"]
-    api_hash = data["api_hash"]
-    phone = data["phone"]
-    phone_code_hash = data["phone_code_hash"]
-    path_session = data["path_session"]
-    if not message.text:
-        return
-    r = await fn.create_telethon_session(
-        phone,
-        message.text,
-        int(api_id),
-        api_hash,
-        phone_code_hash,
-        message.text,
-        path_session,
-    )
-    if r.message == "error":
+    elif r.message == "error":
         await message.answer("Ошибка при создании сессии", reply_markup=None)
         await state.clear()
         return
-    if r.message == "password":
-        await message.answer("Введите пароль", reply_markup=None)
-        return
 
-    async with sessionmaker() as session:
+    if data.get("save_bot", True):
         bot = Bot(
             api_id=int(api_id),
             api_hash=api_hash,
             phone=phone,
             path_session=path_session,
+            is_connected=True,
         )
-        bot_id = bot.id
-        job = Job(task=JobName.get_me_name.value, bot_id=bot_id)
-        session.add(bot, job)
+        job = Job(task=JobName.get_me_name.value)
+        bot.jobs.append(job)
+        bots = await user.awaitable_attrs.bots
+        bots.append(bot)
+        session.add(bot)
         await session.commit()
+
     await start_bot(phone, path_to_folder)
     await message.answer("Бот подключен и запущен", reply_markup=ReplyKeyboardRemove())
     await state.clear()
+    msg = await message.answer("Главное меню", reply_markup=await ik_main_menu())
+    await fn.set_general_message(state, msg)

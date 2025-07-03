@@ -1,14 +1,14 @@
 import dataclasses
 import logging
-from typing import Final
+from typing import Any, Final
 
+from aiogram.fsm.context import FSMContext
+from aiogram.types import Message
 from aiogram.utils.formatting import Code
-from sqlalchemy import insert, select
-from sqlalchemy.ext.asyncio import async_sessionmaker
 from telethon import TelegramClient  # type: ignore
 from telethon.errors import SessionPasswordNeededError  # type: ignore
 
-from bot.db.mysql.models import Base, Bot, MonitoringChat
+from bot.db.mysql.models import MonitoringChat
 
 
 @dataclasses.dataclass
@@ -24,9 +24,23 @@ class Function:
     max_length_message: Final[int] = 4000
 
     @staticmethod
-    async def get_available_bots(sessionmaker: async_sessionmaker) -> list[Bot]:
-        async with sessionmaker() as session:
-            return (await session.scalars(select(Bot))).all()
+    async def set_general_message(state: FSMContext, message: Message) -> None:
+        data_state = await state.get_data()
+        message_id = data_state.get("message_id")
+        await Function._delete_keyboard(message_id, message)
+        await state.update_data(message_id=message.message_id)
+
+    @staticmethod
+    async def _delete_keyboard(message_id_to_delete: int | None, message: Message) -> None:
+        if message_id_to_delete:
+            try:
+                await message.bot.edit_message_reply_markup(
+                    chat_id=message.chat.id,
+                    message_id=message_id_to_delete,
+                    reply_markup=None,
+                )
+            except Exception as e:
+                logger.exception(f"Ошибка при удалении клавиатуры: {e}")
 
     @staticmethod
     async def create_telethon_session(
@@ -68,83 +82,18 @@ class Function:
         client = TelegramClient(path, api_id, api_hash)
         try:
             await client.connect()
+            r = None
             if not await client.is_user_authorized():
                 r = await client.send_code_request(phone)
                 logger.info(f"Код подтверждения отправлен на номер {phone}.")
             await client.disconnect()
-            return r.phone_code_hash
+            return r.phone_code_hash if r else r
         except Exception as e:
             logger.info(f"Ошибка при отправке кода: {e}")
             return None
 
     @staticmethod
-    async def add_data_to_db(
-        sessionmaker: async_sessionmaker,
-        data_to_add: list[str],
-        model_db: type[Base],
-        name_value: str,
-        **kwargs,
-    ):
-        if kwargs:
-            where: list = []
-            for i in kwargs:
-                where.extend((i, kwargs[i]))
-            _ = await Function.get_data_from_db(
-                sessionmaker, model_db, name_value, where
-            )
-        else:
-            _ = await Function.get_data_from_db(sessionmaker, model_db, name_value)
-
-        data_to_add = await Function.collapse_repeated_data(_, data_to_add)
-        async with sessionmaker() as session:
-            for data in data_to_add:
-                _ = {name_value: data} | kwargs
-                await session.execute(insert(model_db).values(**_))
-            await session.commit()
-
-    @staticmethod
-    async def get_data_from_db(
-        sessionmaker: async_sessionmaker,
-        model_db: type[Base],
-        name_value: str | None = None,
-        where: list | None = None,
-    ) -> list[str]:
-        async with sessionmaker() as session:
-            if name_value:
-                return (
-                    [
-                        getattr(i, name_value)
-                        for i in (
-                            await session.scalars(
-                                select(model_db)
-                                .where(getattr(model_db, where[0]) == where[1])
-                                .order_by(model_db.id)
-                            )
-                        ).all()
-                    ]
-                    if where
-                    else [
-                        getattr(i, name_value)
-                        for i in (await session.scalars(select(model_db))).all()
-                    ]
-                )
-            if where:
-                return list(
-                    (
-                        await session.scalars(
-                            select(model_db)
-                            .where(getattr(model_db, where[0]) == where[1])
-                            .order_by(model_db.id)
-                        )
-                    ).all()
-                )
-            else:
-                return list((await session.scalars(select(model_db))).all())
-
-    @staticmethod
-    async def collapse_repeated_data(
-        data: list[str], data_to_compare: list[str]
-    ) -> list[str]:
+    async def collapse_repeated_data(data: list[str], data_to_compare: list[str]) -> list[str]:
         data_to_compare = list(set(data_to_compare))
         for i in data:
             if i in data_to_compare:
@@ -152,13 +101,9 @@ class Function:
         return data_to_compare
 
     @staticmethod
-    async def watch_data(
-        data: list[str], sep: str, q_string_per_page: int, page: int
-    ) -> str:
+    async def watch_data(data: list[str], sep: str, q_string_per_page: int, page: int) -> str:
         data_enumerate = list(enumerate(data))
-        data_ = data_enumerate[
-            (page - 1) * q_string_per_page : page * q_string_per_page
-        ]
+        data_ = data_enumerate[(page - 1) * q_string_per_page : page * q_string_per_page]
         s = "".join(f"{ind + 1}) {i}{sep}" for ind, i in data_)
         if len(s) > Function.max_length_message:
             return await Function.watch_data(data, sep, q_string_per_page - 1, page)
@@ -175,15 +120,10 @@ class Function:
         sep: str,
         q_string_per_page: int,
         page: int,
-    ):
+    ) -> str:
         chats_enumerate = list(enumerate(chats))
-        chats_ = chats_enumerate[
-            (page - 1) * q_string_per_page : page * q_string_per_page
-        ]
-        s = "".join(
-            f"{ind + 1}) {i.id_chat} ({i.title or 'название загружается...'}){sep}"
-            for ind, i in chats_
-        )
+        chats_ = chats_enumerate[(page - 1) * q_string_per_page : page * q_string_per_page]
+        s = "".join(f"{ind + 1}) {i.id_chat} ({i.title or '🌀'}){sep}" for ind, i in chats_)
         if len(s) > Function.max_length_message:
             return await Function.watch_data_chats(
                 chats,
@@ -195,21 +135,18 @@ class Function:
 
     @staticmethod
     async def watch_processed_users(
-        processed_users: list[dict],
+        processed_users: list[dict[str, Any]],
         sep: str,
         q_string_per_page: int,
         page: int,
-        formatting,
-    ):
-        processed_users = processed_users[
-            (page - 1) * q_string_per_page : page * q_string_per_page
-        ]
+        formatting: list[bool],
+    ) -> str:
+        processed_users = processed_users[(page - 1) * q_string_per_page : page * q_string_per_page]
         first_name, username, copy = formatting
         rows = []
         for i in processed_users:
             string = []
             for name, value in i.items():
-                logger.info(name)
                 if name in ["id", "phone", "last_name"]:
                     continue
                 if not username and name == "username":
@@ -226,13 +163,11 @@ class Function:
             rows.append(" - ".join(string))
         rows_str = "\n\n".join(rows)
         if len(rows_str) > Function.max_length_message:
-            return await Function.watch_processed_users(
-                processed_users, sep, q_string_per_page - 1, page, formatting
-            )
+            return await Function.watch_processed_users(processed_users, sep, q_string_per_page - 1, page, formatting)
         return Code(rows_str).as_html() if copy else rows_str
 
     @staticmethod
-    def get_log(file_path, line_count=20) -> list[str] | str:
+    def get_log(file_path: str, line_count: int = 20) -> list[str] | str:
         """
         Получить последние строки из файла.
 
@@ -244,7 +179,6 @@ class Function:
             with open(file_path, "rb") as file:
                 file.seek(0, 2)  # Переходим в конец файла
                 buffer = bytearray()
-                end_of_file = file.tell()
 
                 while len(buffer.splitlines()) <= line_count and file.tell() > 0:
                     # Смещаемся назад блоками по 1024 байта

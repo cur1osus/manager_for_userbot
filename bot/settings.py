@@ -25,10 +25,10 @@ class Settings(BaseSettings):
     dev: bool
     bot_token: SecretStr
 
-    mysql: MysqlSettings = MysqlSettings(_env_prefix="MYSQL_")  # type: ignore
-    redis: RedisSettings = RedisSettings(_env_prefix="REDIS_")  # type: ignore
+    mysql: MysqlSettings = MysqlSettings(_env_prefix="MYSQL_")
+    redis: RedisSettings = RedisSettings(_env_prefix="REDIS_")
 
-    def sqlite_dsn(self) -> URL:
+    def mysql_dsn(self) -> URL:
         return URL.create(
             drivername="mysql+aiomysql",
             database=self.mysql.db,
@@ -36,6 +36,15 @@ class Settings(BaseSettings):
             password=self.mysql.password,
             host=self.mysql.host,
         )
+
+    def mysql_dsn_string(self) -> str:
+        return URL.create(
+            drivername="mysql+aiomysql",
+            database=self.mysql.db,
+            username=self.mysql.username,
+            password=self.mysql.password,
+            host=self.mysql.host,
+        ).render_as_string(hide_password=False)
 
     async def redis_dsn(self) -> Redis:
         return Redis(host=self.redis.host, port=self.redis.port, db=self.redis.db)

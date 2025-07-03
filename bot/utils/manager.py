@@ -13,7 +13,7 @@ PID_FILE = "_bot.pid"
 LOG_FILE = "_bot.log"
 
 
-async def start_bot(phone: str, path_to_folder: str):
+async def start_bot(phone: str, path_to_folder: str) -> int:
     path_log = os.path.join(path_to_folder, f"{phone}{LOG_FILE}")
     path_pid = os.path.join(path_to_folder, f"{phone}{PID_FILE}")
     # Открываем файл лога асинхронно через обычный open — asyncio не поддерживает асинхронный доступ к файлам
@@ -34,15 +34,19 @@ async def start_bot(phone: str, path_to_folder: str):
         f.write(str(process.pid))
 
     logger.info(f"Бот запущен с PID: {process.pid}")
-    return process
+    return process.pid
 
 
-async def bot_has_started(phone: str, path_to_folder: str, pid: int):
+async def bot_has_started(phone: str, path_to_folder: str) -> bool:
     path_pid = os.path.join(path_to_folder, f"{phone}{PID_FILE}")
-    return psutil.pid_exists(pid) if os.path.exists(path_pid) else False
+    if not os.path.exists(path_pid):
+        return False
+    with open(path_pid, "r") as f:
+        pid = int(f.read())
+    return psutil.pid_exists(pid)
 
 
-async def delete_bot(phone: str, path_to_folder: str):
+async def delete_bot(phone: str, path_to_folder: str) -> None:
     path_pid = os.path.join(path_to_folder, f"{phone}{PID_FILE}")
     if not os.path.exists(path_pid):
         logger.info("PID-файл не найден, бот не запущен?")
@@ -59,12 +63,10 @@ async def delete_bot(phone: str, path_to_folder: str):
     except PermissionError:
         logger.info("Нет прав на завершение процесса")
 
-    await delete_files_by_name(
-        path_to_folder, [f"{phone}_session.session", f"{phone}{PID_FILE}"]
-    )
+    await delete_files_by_name(path_to_folder, [f"{phone}_session.session", f"{phone}{PID_FILE}"])
 
 
-async def delete_files_by_name(folder_path, filenames):
+async def delete_files_by_name(folder_path: str, filenames: list[str]) -> None:
     """
     Удаляет файлы с указанными именами в папке.
 

@@ -3,14 +3,15 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import msgpack  # type: ignore
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, InaccessibleMessage, Message
-from sqlalchemy import and_, asc, delete, select
-from sqlalchemy.ext.asyncio import async_sessionmaker
+from aiogram.types import CallbackQuery, Message
+from config import path_to_folder, sep
+from sqlalchemy import and_, asc, func, select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.db.mysql.models import (
     BannedUser,
@@ -30,7 +31,9 @@ from bot.keyboards.inline import (
     ik_available_bots,
     ik_back,
     ik_cancel_action,
+    ik_connect_bot,
     ik_folders,
+    ik_folders_with_users,
     ik_history_back,
     ik_main_menu,
     ik_num_matrix_del,
@@ -38,84 +41,96 @@ from bot.keyboards.inline import (
     ik_processed_users,
 )
 from bot.states import UserState
-from bot.utils.func import Function as fn
-from bot.utils.manager import delete_bot, start_bot
+from bot.utils import fn
+from bot.utils.manager import bot_has_started, delete_bot, start_bot
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
-from sqlalchemy import func
 
 router = Router()
 logger = logging.getLogger(__name__)
-path_to_folder = "sessions"
-sep = "\n"
 
 
 @router.callback_query(F.data.split(":")[0] == "bot_id")
 async def manage_bot(
     query: CallbackQuery,
+    user: UserManager,
     redis: Redis,
     state: FSMContext,
-    sessionmaker: async_sessionmaker,
-):
-    if (
-        not query.data
-        or not query.message
-        or isinstance(query.message, InaccessibleMessage)
-    ):
-        return
-    bot_id = query.data.split(":")[1]
+    session: AsyncSession,
+) -> None:
+    bot_id = int(query.data.split(":")[1])
+    bot = await user.get_obj_bot(bot_id)
     await state.update_data(bot_id=bot_id)
-    await query.message.edit_text(
-        "Выберите действие",
-        reply_markup=await ik_action_with_bot(back_to="bots"),
+    if bot.is_connected:
+        await query.message.edit_text(
+            "Выберите действие",
+            reply_markup=await ik_action_with_bot(back_to="bots"),
+        )
+    else:
+        await query.message.edit_text(
+            "Выберите действие",
+            reply_markup=await ik_connect_bot(back_to="bots"),
+        )
+
+
+@router.callback_query(F.data == "connect")
+async def connect_bot(
+    query: CallbackQuery,
+    user: UserManager,
+    redis: Redis,
+    state: FSMContext,
+    session: AsyncSession,
+) -> None:
+    bot_id = (await state.get_data()).get("bot_id")
+    bot = await user.get_obj_bot(bot_id)
+    phone_code_hash = await fn.send_code_via_telethon(
+        bot.phone,
+        bot.api_id,
+        bot.api_hash,
+        bot.path_session,
     )
+    if phone_code_hash is None:
+        await query.message.answer("Ошибка при отправке кода", reply_markup=None)
+        return
+    await state.update_data(
+        api_id=bot.api_id,
+        api_hash=bot.api_hash,
+        phone=bot.phone,
+        phone_code_hash=phone_code_hash,
+        path_session=bot.path_session,
+        save_bot=False,
+    )
+    await query.message.edit_text("Введите code", reply_markup=None)
+    await state.set_state(UserState.enter_code)
 
 
 @router.callback_query(F.data == "restart_bot")
 async def restart_bot(
-    query: CallbackQuery,
-    redis: Redis,
-    state: FSMContext,
-    sessionmaker: async_sessionmaker,
-):
-    if (
-        not query.data
-        or not query.message
-        or isinstance(query.message, InaccessibleMessage)
-    ):
-        return
+    query: CallbackQuery, user: UserManager, redis: Redis, state: FSMContext, session: AsyncSession
+) -> None:
     bot_id = (await state.get_data())["bot_id"]
-    async with sessionmaker() as session:
-        bot: Bot = await session.get(Bot, bot_id)
-        if not bot:
-            return
-        phone = bot.phone
+    bot: Bot = await user.get_obj_bot(bot_id)
+    if not bot:
+        return
+    phone = bot.phone
     await delete_bot(phone, path_to_folder)
     await start_bot(phone, path_to_folder)
-    await query.message.edit_text(
-        "Бот подключен и запущен", reply_markup=await ik_main_menu()
-    )
+    await query.message.edit_text("Бот подключен и запущен", reply_markup=await ik_main_menu())
 
 
 @router.callback_query(F.data == "start")
 async def start_bot_process(
     query: CallbackQuery,
+    user: UserManager,
     redis: Redis,
     state: FSMContext,
-    sessionmaker: async_sessionmaker,
-):
-    if (
-        not query.data
-        or not query.message
-        or isinstance(query.message, InaccessibleMessage)
-    ):
-        return
+    session: AsyncSession,
+) -> None:
     bot_id = (await state.get_data())["bot_id"]
-    async with sessionmaker() as session:
-        bot: Bot = await session.get(Bot, bot_id)
-        bot.is_started = True
-        await session.commit()
+    bot: Bot = await user.get_obj_bot(bot_id)
+    bot.is_started = True
+    await session.commit()
     await query.message.edit_text(
         "Бот Начал писать и анализировать сообщения 🟢",
         reply_markup=await ik_action_with_bot(),
@@ -125,21 +140,15 @@ async def start_bot_process(
 @router.callback_query(F.data == "stop")
 async def stop_bot_process(
     query: CallbackQuery,
+    user: UserManager,
     redis: Redis,
     state: FSMContext,
-    sessionmaker: async_sessionmaker,
-):
-    if (
-        not query.data
-        or not query.message
-        or isinstance(query.message, InaccessibleMessage)
-    ):
-        return
+    session: AsyncSession,
+) -> None:
     bot_id = (await state.get_data())["bot_id"]
-    async with sessionmaker() as session:
-        bot: Bot = await session.get(Bot, bot_id)
-        bot.is_started = False
-        await session.commit()
+    bot: Bot = await user.get_obj_bot(bot_id)
+    bot.is_started = False
+    await session.commit()
     await query.message.edit_text(
         "Бот остановлен и не будет писать и анализировать сообщения 🔴",
         reply_markup=await ik_action_with_bot(),
@@ -149,74 +158,58 @@ async def stop_bot_process(
 @router.callback_query(F.data == "delete")
 async def delete_bot_(
     query: CallbackQuery,
+    user: UserManager,
     redis: Redis,
     state: FSMContext,
-    sessionmaker: async_sessionmaker,
-):
-    if (
-        not query.data
-        or not query.message
-        or isinstance(query.message, InaccessibleMessage)
-    ):
-        return
+    session: AsyncSession,
+) -> None:
     data = await state.get_data()
     bot_id = data["bot_id"]
-
-    async with sessionmaker() as session:
-        bot: Bot = await session.get(Bot, bot_id)
-        if bot is None:
-            return
-        await delete_bot(bot.phone, path_to_folder)
-        await session.execute(
-            delete(MonitoringChat).where(MonitoringChat.bot_id == bot.id)
-        )
-        await session.delete(bot)
-        await session.commit()
-    await query.message.edit_text("Бот удален", reply_markup=await ik_main_menu())
+    bot: Bot = await user.get_obj_bot(bot_id)
+    if bot is None:
+        return
+    bot.is_connected = False
+    await delete_bot(phone=bot.phone, path_to_folder=path_to_folder)
+    await session.commit()
+    await query.message.edit_text("Бот отключен", reply_markup=await ik_main_menu())
 
 
 @router.callback_query(F.data.split(":")[0] == "info")
 async def info(
     query: CallbackQuery | Message,
-    redis: Redis,
+    user: UserManager,
     state: FSMContext,
-    sessionmaker: async_sessionmaker,
+    sessionmaker: async_sessionmaker | None = None,
     type_data: str | None = None,
     current_page: int | None = None,
-):
+) -> None:
     if isinstance(query, CallbackQuery):
-        if (
-            not query.data
-            or not query.message
-            or isinstance(query.message, InaccessibleMessage)
-        ):
-            return
         type_data = type_data or query.data.split(":")[1]
-    kwargs_for_keyboard: dict = {}
+    if sessionmaker:
+        async with sessionmaker() as session:
+            user = await session.get(UserManager, user.id)
+
+    await state.set_state(UserState.action)
+
+    kwargs_for_keyboard: dict[str, Any] = {}
     all_page = None
     data_str = None
     match type_data:
         case "answer":
-            data = await fn.get_data_from_db(sessionmaker, MessageToAnswer, "sentence")
+            data = [i.sentence for i in user.messages_to_answer]
             data_str = None if data else "Ответы отсутствуют"
         case "ban":
-            data = await fn.get_data_from_db(sessionmaker, BannedUser, "username")
+            data = [i.username for i in user.banned_users]
             data_str = None if data else "Пользователи отсутствуют"
         case "chat":
             bot_id = (await state.get_data())["bot_id"]
-            data = await fn.get_data_from_db(
-                sessionmaker,
-                MonitoringChat,
-                where=["bot_id", bot_id],
-            )
+            data = (await user.get_obj_bot(bot_id)).chats
             q_string_per_page = 10
-            all_page = await fn.count_page(
-                len_data=len(data), q_string_per_page=q_string_per_page
-            )
+            all_page = await fn.count_page(len_data=len(data), q_string_per_page=q_string_per_page)
             current_page = current_page or all_page
             data_str = (
                 await fn.watch_data_chats(
-                    data,  # type: ignore
+                    data,
                     sep,
                     q_string_per_page,
                     current_page or all_page,
@@ -230,38 +223,38 @@ async def info(
                 "all_page": all_page,
             }
         case "keyword":
-            data = await fn.get_data_from_db(sessionmaker, KeyWord, "word")
+            data = [i.word for i in user.keywords]
             data_str = None if data else "Триггерные слова отсутствуют"
 
         case "ignore":
-            data = await fn.get_data_from_db(sessionmaker, IgnoredWord, "word")
+            data = [i.word for i in user.ignored_words]
             data_str = None if data else "Игнорируемые слова отсутствуют"
 
     if not data_str:
         q_string_per_page = 10
-        all_page = await fn.count_page(
-            len_data=len(data), q_string_per_page=q_string_per_page
-        )
+        all_page = await fn.count_page(len_data=len(data), q_string_per_page=q_string_per_page)
         current_page = current_page or all_page
         data_str = await fn.watch_data(
             data,
             sep,
             q_string_per_page,
-            current_page,  # type: ignore
+            current_page,
         )
-    kwargs_for_keyboard["all_page"] = all_page or 1
-    kwargs_for_keyboard["current_page"] = current_page or 1
+    all_page = all_page or 1
+    current_page = current_page or 1
+    kwargs_for_keyboard["all_page"] = all_page
+    kwargs_for_keyboard["current_page"] = current_page
     if isinstance(query, CallbackQuery):
-        await query.message.edit_text(  # type: ignore
+        await query.message.edit_text(
             text=data_str,
             reply_markup=await ik_add_or_delete(**kwargs_for_keyboard),
         )
     else:
-        await query.answer(
+        msg = await query.answer(
             text=data_str,
             reply_markup=await ik_add_or_delete(**kwargs_for_keyboard),
         )
-    await state.set_state(UserState.action)
+        await fn.set_general_message(state, msg)
     await state.update_data(
         type_data=type_data,
         current_page=current_page,
@@ -272,16 +265,11 @@ async def info(
 @router.callback_query(F.data.in_(["arrow_left", "arrow_right"]))
 async def arrow(
     query: CallbackQuery,
+    user: UserManager,
     redis: Redis,
     state: FSMContext,
-    sessionmaker: async_sessionmaker,
-):
-    if (
-        not query.data
-        or not query.message
-        or isinstance(query.message, InaccessibleMessage)
-    ):
-        return
+    session: AsyncSession,
+) -> None:
     arrow = query.data
     data = await state.get_data()
     page = data.get("current_page", 1)
@@ -293,9 +281,7 @@ async def arrow(
         case "arrow_right":
             page = page + 1 if page < all_page else 1
     try:
-        await info(
-            query, redis, state, sessionmaker, type_data=type_data, current_page=page
-        )
+        await info(query, user, state, type_data=type_data, current_page=page)
     except Exception:
         await query.answer("Страница всего одна :(")
 
@@ -303,26 +289,17 @@ async def arrow(
 @router.callback_query(UserState.action, F.data == "add")
 async def add(
     query: CallbackQuery,
+    user: UserManager,
     redis: Redis,
     state: FSMContext,
-    sessionmaker: async_sessionmaker,
-):
-    if (
-        not query.data
-        or not query.message
-        or isinstance(query.message, InaccessibleMessage)
-    ):
-        return
+    session: AsyncSession,
+) -> None:
     type_data = (await state.get_data())["type_data"]
     match type_data:
         case "answer":
-            await query.message.edit_text(
-                "Введите ответ(-ы)", reply_markup=await ik_cancel_action()
-            )
+            await query.message.edit_text("Введите ответ(-ы)", reply_markup=await ik_cancel_action())
         case "ban":
-            await query.message.edit_text(
-                "Введите username(-s)", reply_markup=await ik_cancel_action()
-            )
+            await query.message.edit_text("Введите username(-s)", reply_markup=await ik_cancel_action())
         case "chat":
             await query.message.edit_text(
                 "Введите chat_id(-s)",
@@ -334,9 +311,7 @@ async def add(
                 reply_markup=await ik_cancel_action(),
             )
         case "keyword":
-            await query.message.edit_text(
-                "Введите триггерное слово(-а)", reply_markup=await ik_cancel_action()
-            )
+            await query.message.edit_text("Введите триггерное слово(-а)", reply_markup=await ik_cancel_action())
     await state.set_state(UserState.action)
 
 
@@ -344,43 +319,43 @@ async def add(
 async def processing_message_to_add(
     message: Message,
     redis: Redis,
+    user: UserManager,
     state: FSMContext,
-    sessionmaker: async_sessionmaker,
-):
-    if not message.text or isinstance(message, InaccessibleMessage):
-        return
-    data_to_add = [i.strip() for i in message.text.split(sep)]
+    session: AsyncSession,
+) -> None:
+    data_to_add = [i.strip() for i in message.text.split(sep) if i]
     type_data = (await state.get_data())["type_data"]
     match type_data:
         case "answer":
-            await fn.add_data_to_db(
-                sessionmaker, data_to_add, MessageToAnswer, "sentence"
-            )
+            messages_to_answer = await user.awaitable_attrs.messages_to_answer
+            data_to_add = await fn.collapse_repeated_data([i.sentence for i in messages_to_answer], data_to_add)
+            messages_to_answer.extend([MessageToAnswer(sentence=i) for i in data_to_add])
         case "ban":
-            await fn.add_data_to_db(sessionmaker, data_to_add, BannedUser, "username")
+            banned_users = await user.awaitable_attrs.banned_users
+            data_to_add = await fn.collapse_repeated_data([i.username for i in banned_users], data_to_add)
+            banned_users.extend([BannedUser(username=i) for i in data_to_add])
         case "chat":
             bot_id = (await state.get_data())["bot_id"]
-            await fn.add_data_to_db(
-                sessionmaker,
-                data_to_add,
-                MonitoringChat,
-                "id_chat",
-                bot_id=bot_id,
-            )
-            async with sessionmaker() as session:
-                job = Job(task=JobName.get_chat_title.value, bot_id=bot_id)
-                session.add(job)
-                await session.commit()
+            bot = await user.get_obj_bot(bot_id)
+            chats = bot.awaitable_attrs.chats
+            data_to_add = await fn.collapse_repeated_data([i.chat_id for i in chats], data_to_add)
+            chats.extend([MonitoringChat(chat_id=i) for i in data_to_add])
+            job = Job(task=JobName.get_chat_title.value, bot=bot)
+            session.add(job)
         case "ignore":
-            await fn.add_data_to_db(sessionmaker, data_to_add, IgnoredWord, "word")
+            ignored_words = await user.awaitable_attrs.ignored_words
+            data_to_add = await fn.collapse_repeated_data([i.word for i in ignored_words], data_to_add)
+            ignored_words.extend([IgnoredWord(word=i) for i in data_to_add])
         case "keyword":
-            await fn.add_data_to_db(sessionmaker, data_to_add, KeyWord, "word")
+            keywords = await user.awaitable_attrs.keywords
+            data_to_add = await fn.collapse_repeated_data([i.word for i in keywords], data_to_add)
+            await keywords.extend([KeyWord(word=i) for i in data_to_add])
+    await session.commit()
     current_page = (await state.get_data())["current_page"]
     await info(
         message,
-        redis,
+        user,
         state,
-        sessionmaker,
         type_data=type_data,
         current_page=current_page,
     )
@@ -388,40 +363,31 @@ async def processing_message_to_add(
 
 @router.callback_query(UserState.action, F.data == "del")
 async def delete_(
-    query: CallbackQuery,
-    redis: Redis,
-    state: FSMContext,
-    sessionmaker: async_sessionmaker,
-):
-    if (
-        not query.data
-        or not query.message
-        or isinstance(query.message, InaccessibleMessage)
-    ):
-        return
+    query: CallbackQuery, user: UserManager, state: FSMContext, sessionmaker: async_sessionmaker | None = None
+) -> None:
     type_data = (await state.get_data())["type_data"]
-    kwargs_for_keyboard: dict = {"back_to": "base_add_or_delete"}
+    kwargs_for_keyboard: dict[str, str] = {"back_to": "base_add_or_delete"}
     ids = []
+    if sessionmaker:
+        async with sessionmaker() as session:
+            user = await session.get(UserManager, user.id)
     match type_data:
         case "answer":
-            ids = await fn.get_data_from_db(sessionmaker, MessageToAnswer, "id")
+            ids = [i.id for i in user.messages_to_answer]
         case "ban":
-            ids = await fn.get_data_from_db(sessionmaker, BannedUser, "id")
+            ids = [i.id for i in user.banned_users]
         case "chat":
             bot_id = (await state.get_data())["bot_id"]
-            ids = await fn.get_data_from_db(
-                sessionmaker, MonitoringChat, "id", ["bot_id", bot_id]
-            )
+            bot = await user.get_obj_bot(bot_id)
+            ids = [i.id for i in bot.chats]
             kwargs_for_keyboard["back_to"] = "chat_add_or_delete"
         case "ignore":
-            ids = await fn.get_data_from_db(sessionmaker, IgnoredWord, "id")
+            ids = [i.id for i in user.ignored_words]
         case "keyword":
-            ids = await fn.get_data_from_db(sessionmaker, KeyWord, "id")
+            ids = [i.id for i in user.keywords]
         case _:
             return
-    await query.message.edit_reply_markup(
-        reply_markup=await ik_num_matrix_del(ids, **kwargs_for_keyboard)
-    )
+    await query.message.edit_reply_markup(reply_markup=await ik_num_matrix_del(ids, **kwargs_for_keyboard))
     await state.update_data(ids=ids)
     await state.set_state(UserState.action)
 
@@ -429,131 +395,192 @@ async def delete_(
 @router.callback_query(UserState.action, F.data.split(":")[0] == "del")
 async def del_by_id(
     query: CallbackQuery,
+    user: UserManager,
     redis: Redis,
     state: FSMContext,
+    session: AsyncSession,
     sessionmaker: async_sessionmaker,
-):
-    if (
-        not query.data
-        or not query.message
-        or isinstance(query.message, InaccessibleMessage)
-    ):
-        return
+) -> None:
     type_data = (await state.get_data())["type_data"]
-    id_ = query.data.split(":")[1]
-    async with sessionmaker() as session:
-        match type_data:
-            case "answer":
-                await session.delete(await session.get(MessageToAnswer, int(id_)))
-            case "ban":
-                await session.delete(await session.get(BannedUser, int(id_)))
-            case "chat":
-                bot_id = (await state.get_data())["bot_id"]
-                await session.delete(
-                    await session.scalar(
-                        select(MonitoringChat).where(
-                            and_(
-                                MonitoringChat.id == id_,
-                                MonitoringChat.bot_id == bot_id,
-                            )
-                        )
-                    )
-                )
-            case "ignore":
-                await session.delete(await session.get(IgnoredWord, int(id_)))
-            case "keyword":
-                await session.delete(await session.get(KeyWord, int(id_)))
-        await session.commit()
-    await info(query, redis, state, sessionmaker, type_data=type_data)
-    await delete_(query, redis, state, sessionmaker)
+    id_ = int(query.data.split(":")[1])
+    obj = None
+    match type_data:
+        case "answer":
+            obj = await session.get(MessageToAnswer, id_)
+        case "ban":
+            obj = await session.get(BannedUser, id_)
+        case "chat":
+            obj = await session.get(MonitoringChat, id_)
+        case "ignore":
+            obj = await session.get(IgnoredWord, id_)
+        case "keyword":
+            obj = await session.get(KeyWord, id_)
+    await session.delete(obj)
+    await session.commit()
+    await info(query, user, state, sessionmaker=sessionmaker, type_data=type_data)
+    await delete_(query, user, state, sessionmaker=sessionmaker)
 
 
 @router.callback_query(F.data == "users_per_minute")
 async def users_per_minute(
     query: CallbackQuery,
-    redis: Redis,
-    state: FSMContext,
-    sessionmaker: async_sessionmaker,
     user: UserManager,
-):
-    if (
-        not query.data
-        or not query.message
-        or isinstance(query.message, InaccessibleMessage)
-    ):
-        return
-    await query.message.edit_text(
-        text="Выбери пропускную способность:",
-        reply_markup=await ik_num_matrix_users(user.users_per_minute),
-    )
+) -> None:
+    try:
+        await query.message.edit_text(
+            text="Выбери пропускную способность:",
+            reply_markup=await ik_num_matrix_users(user.users_per_minute),
+        )
+    except Exception:
+        logger.exception("not modified message")
 
 
 @router.callback_query(F.data.split(":")[0] == "upm")
 async def change_users_per_minute(
     query: CallbackQuery,
+    user: UserManager,
     redis: Redis,
     state: FSMContext,
-    sessionmaker: async_sessionmaker,
-    user: UserManager,
-):
-    if (
-        not query.data
-        or not query.message
-        or isinstance(query.message, InaccessibleMessage)
-    ):
-        return
+    session: AsyncSession,
+) -> None:
     upm = int(query.data.split(":")[1])
     user.users_per_minute = upm
-    async with sessionmaker() as session:
-        user = await session.merge(user)
-        await session.commit()
-    await users_per_minute(query, redis, state, sessionmaker, user)
+    user = await session.merge(user)
+    await session.commit()
+    try:
+        await users_per_minute(query, user)
+    except Exception:
+        logger.exception("not modified message")
 
 
 @router.callback_query(F.data == "processed_users")
 async def add_job_to_get_processed_users(
     query: CallbackQuery,
+    user: UserManager,
     state: FSMContext,
+    session: AsyncSession,
     sessionmaker: async_sessionmaker,
     from_state: bool = False,
-):
-    if (
-        not query.data
-        or not query.message
-        or isinstance(query.message, InaccessibleMessage)
-    ):
-        return
-    if from_state:
-        folders = (await state.get_data())["folders"]
-        folders_name = [folder[0] for folder in folders]
-    else:
-        bot_id = (await state.get_data())["bot_id"]
-        await state.set_state(UserState.action)
+) -> None:
+    await state.set_state(UserState.action)
+
+    bot_id = (await state.get_data())["bot_id"]
+    bot = await user.get_obj_bot(bot_id)
+    job = Job(task=JobName.get_folders.value)
+    bot.jobs.append(job)
+    await session.commit()
+
+    switch = True
+    tries = 0
+    while switch:
+        await query.message.edit_text(text="Получаю названия папок", reply_markup=None)
         async with sessionmaker() as session:
-            job = Job(bot_id=bot_id, task=JobName.processed_users.value)
-            session.add(job)
-            await session.commit()
+            job: Job | None = await session.scalar(
+                select(Job)
+                .where(
+                    and_(
+                        Job.bot_id == bot_id,
+                        Job.task == JobName.get_folders.value,
+                    )
+                )
+                .order_by(Job.id.desc())
+                .limit(1)
+            )
+        sleep_sec = 0.5
+        await asyncio.sleep(sleep_sec)
+        await query.message.edit_text(text="Получаю названия папок 🌥", reply_markup=None)
+        await asyncio.sleep(sleep_sec)
+        await query.message.edit_text(text="Получаю названия папок 🌥⛅️")
+        await asyncio.sleep(sleep_sec)
+        await query.message.edit_text(text="Получаю названия папок 🌥⛅️🌤")
+        await asyncio.sleep(sleep_sec)
+        await query.message.edit_text(text="Получаю названия папок 🌥⛅️🌤☀️")
+        await asyncio.sleep(sleep_sec)
+        if job and job.answer:
+            switch = False
+        if tries > 3:
+            await query.message.edit_text(
+                text="Не смог получить папки",
+                reply_markup=await ik_back(back_to="action_with_bot"),
+            )
+            return
+        tries += 1
+
+    raw_folders: list[dict[str, str]] = msgpack.unpackb(job.answer)
+    name_folders = [i["name"] for i in raw_folders]
+    choice_folders = {i: False for i in name_folders}
+
+    await state.update_data(choice_folders=choice_folders, raw_folders=raw_folders)
+    await query.message.edit_text(
+        text="Папки",
+        reply_markup=await ik_folders(choice_folders, back_to="action_with_bot"),
+    )
+
+
+@router.callback_query(UserState.action, F.data.split(":")[0] == "folder")
+async def choice_folder(query: CallbackQuery, user: UserManager, state: FSMContext, session: AsyncSession) -> None:
+    data = await state.get_data()
+    target_folder = query.data.split(":")[1]
+    choice_folders = data["choice_folders"]
+    choice_folders[target_folder] = not choice_folders[target_folder]
+    await state.update_data(choice_folders=choice_folders)
+    await query.message.edit_text(
+        text="Папки",
+        reply_markup=await ik_folders(choice_folders, back_to="action_with_bot"),
+    )
+
+
+@router.callback_query(UserState.action, F.data.split(":")[0] == "accept_folders")
+async def get_processed_users_from_folder(
+    query: CallbackQuery,
+    user: UserManager,
+    state: FSMContext,
+    session: AsyncSession,
+    sessionmaker: async_sessionmaker,
+    from_state: bool | None = None,
+) -> None:
+    data = await state.get_data()
+    if from_state:
+        folders = data.get("folders")
+        name_folders = [i["name"] for i in folders]
+    else:
+        choice_folders: dict[str, bool] = data["choice_folders"]
+        raw_folders: list[dict[str, str]] = data["raw_folders"]
+        folders = [raw_folder for raw_folder in raw_folders if choice_folders[raw_folder["name"]]]
+
+        bot_id = data["bot_id"]
+        bot = await user.get_obj_bot(bot_id)
+        job = Job(task=JobName.processed_users.value, task_metadata=msgpack.packb(folders))
+        bot.jobs.append(job)
+        await session.commit()
+
         switch = True
         tries = 0
         while switch:
             await query.message.edit_text(text="Получаю папки", reply_markup=None)
             async with sessionmaker() as session:
-                folders: Job | None = await session.scalar(  # type: ignore
-                    select(Job).where(
+                job: Job | None = await session.scalar(
+                    select(Job)
+                    .where(
                         and_(
                             Job.bot_id == bot_id,
                             Job.task == JobName.processed_users.value,
                         )
                     )
+                    .order_by(Job.id.desc())
+                    .limit(1)
                 )
-            logger.info(folders)
-            await asyncio.sleep(1)
-            await query.message.edit_text(text="Получаю папки.")
-            await asyncio.sleep(1)
-            await query.message.edit_text(text="Получаю папки..")
-            await asyncio.sleep(1)
-            await query.message.edit_text(text="Получаю папки...")
-            if folders and folders.answer:
+            sleep_sec = 0.5
+            await asyncio.sleep(sleep_sec)
+            await query.message.edit_text(text="Получаю папки 😐", reply_markup=None)
+            await asyncio.sleep(sleep_sec)
+            await query.message.edit_text(text="Получаю папки 😐🙂")
+            await asyncio.sleep(sleep_sec)
+            await query.message.edit_text(text="Получаю папки 😐🙂😁")
+            await asyncio.sleep(sleep_sec)
+            await query.message.edit_text(text="Получаю папки 😐🙂😁😆")
+            await asyncio.sleep(sleep_sec)
+            if job and job.answer:
                 switch = False
             if tries > 3:
                 await query.message.edit_text(
@@ -562,64 +589,44 @@ async def add_job_to_get_processed_users(
                 )
                 return
             tries += 1
-        folders_unpack = msgpack.unpackb(folders.answer)  # type: ignore
-        folders_name = [folder[0] for folder in folders_unpack]
-        await state.update_data(folders=folders_unpack)
+        folders: list[dict[str, list[dict[str, Any]] | str]] = msgpack.unpackb(job.answer)
+        name_folders = [i["name"] for i in folders]
+        await state.update_data(folders=folders)
     await query.message.edit_text(
         text="Папки",
-        reply_markup=await ik_folders(folders_name, back_to="action_with_bot"),
+        reply_markup=await ik_folders_with_users(name_folders, back_to="action_with_bot"),
     )
 
 
-@router.callback_query(UserState.action, F.data.split(":")[0] == "folder")
-async def get_processed_users_from_folder(
-    query: CallbackQuery,
-    state: FSMContext,
-    sessionmaker: async_sessionmaker,
-    current_page: int | None = None,
-    from_state: bool = False,
-    formatting_choices: list[bool] | None = None,
-):
-    if formatting_choices is None:
-        formatting_choices = [True, True, False]
-    if (
-        not query.data
-        or not query.message
-        or isinstance(query.message, InaccessibleMessage)
-    ):
-        return
-    if from_state:
-        folder = (await state.get_data()).get("folder", None)
-        name_folder, processed_users = folder
+@router.callback_query(UserState.action, F.data.split(":")[0] == "target_folder")
+async def view_target_folder(query: CallbackQuery, state: FSMContext, current_page: int | None = None) -> None:
+    data = await state.get_data()
+    if current_page:
+        folder = data["current_folder"]
     else:
-        name_target_folder = query.data.split(":")[1]
-        folders = (await state.get_data())["folders"]
-        name_folder, processed_users = [
-            i for i in folders if i[0] == name_target_folder
-        ][0]
-    q_string_per_page = 20
-    all_page = await fn.count_page(
-        len_data=len(processed_users), q_string_per_page=q_string_per_page
+        target_folder = query.data.split(":")[1]
+        folders: list[dict[str, dict[str, Any] | str]] = data["folders"]
+        folder = next(i for i in folders if i["name"] == target_folder)
+    page = current_page or 1
+    q_string_per_page = 10
+    formatting_choices = data.get("formatting_choices", [True, True, False])
+    all_page = await fn.count_page(len(folder.get("pinned_peers", [])), q_string_per_page)
+    t = await fn.watch_processed_users(folder.get("pinned_peers"), sep, q_string_per_page, page, formatting_choices)
+    await state.update_data(
+        current_page=page,
+        all_page=all_page,
+        current_folder=folder,
+        formatting_choices=formatting_choices,
     )
-    current_page = current_page or all_page
-    txt = processed_users or "Нет людей"
-    if isinstance(txt, list):
-        txt = await fn.watch_processed_users(
-            processed_users, sep, q_string_per_page, current_page, formatting_choices
-        )
-        await state.update_data(
-            current_page=current_page,
-            all_page=all_page,
-            folder=[name_folder, processed_users],
-        )
-    await state.update_data(formatting_choices=formatting_choices)
+    if not t:
+        t = "Папка пустая :("
     await query.message.edit_text(
-        text=txt,
+        t,
         reply_markup=await ik_processed_users(
-            back_to="folders",
-            current_page=current_page,
             all_page=all_page,
+            current_page=page,
             choices=formatting_choices,
+            back_to="accept_folders",
         ),
     )
 
@@ -627,16 +634,11 @@ async def get_processed_users_from_folder(
 @router.callback_query(UserState.action, F.data.split(":")[0] == "u")
 async def arrow_processed_users(
     query: CallbackQuery,
+    user: UserManager,
     redis: Redis,
     state: FSMContext,
-    sessionmaker: async_sessionmaker,
-):
-    if (
-        not query.data
-        or not query.message
-        or isinstance(query.message, InaccessibleMessage)
-    ):
-        return
+    session: AsyncSession,
+) -> None:
     arrow = query.data.split(":")[1]
     data = await state.get_data()
     page = data.get("current_page", 1)
@@ -647,26 +649,19 @@ async def arrow_processed_users(
         case "arrow_right":
             page = page + 1 if page < all_page else 1
     try:
-        await get_processed_users_from_folder(
-            query, state, sessionmaker, current_page=page, from_state=True
-        )
+        await view_target_folder(query, state, current_page=page)
     except Exception as e:
         logger.exception(e)
         await query.answer("Страница всего одна :(")
 
 
-@router.callback_query(
-    UserState.action, F.data.in_(["f_username", "f_first_name", "f_copy"])
-)
+@router.callback_query(UserState.action, F.data.in_(["f_username", "f_first_name", "f_copy"]))
 async def formatting_(
     query: CallbackQuery,
     state: FSMContext,
-    sessionmaker: async_sessionmaker,
-    current_page: int | None = None,
-):
-    formatting_choices: list[bool] = (await state.get_data()).get(
-        "formatting_choices", None
-    )
+) -> None:
+    data = await state.get_data()
+    formatting_choices: list[bool] = data["formatting_choices"]
     if query.data == "f_first_name":
         formatting_choices[0] = not formatting_choices[0]
     elif query.data == "f_username":
@@ -675,54 +670,40 @@ async def formatting_(
         formatting_choices[2] = not formatting_choices[2]
     if formatting_choices[0] is False and formatting_choices[1] is False:
         formatting_choices[0] = True
+    await state.update_data(formatting_choices=formatting_choices)
     with contextlib.suppress(Exception):
-        await get_processed_users_from_folder(
-            query,
-            state,
-            sessionmaker,
-            current_page=None,
-            from_state=True,
-            formatting_choices=formatting_choices,
-        )
+        await view_target_folder(query, state, current_page=data["current_page"])
 
 
 @router.callback_query(F.data == "history")
 async def history(
     query: CallbackQuery,
+    user: UserManager,
     state: FSMContext,
-    sessionmaker: async_sessionmaker,
+    session: AsyncSession,
     current_page: int | None = None,
-):
-    if (
-        not query.data
-        or not query.message
-        or isinstance(query.message, InaccessibleMessage)
-    ):
-        return
+) -> None:
     q_string_per_page = 10
-    async with sessionmaker() as session:
-        len_data = await session.scalar(select(func.count(UserAnalyzed.id)))
-        all_page = await fn.count_page(len_data, q_string_per_page)
-        current_page = current_page or all_page
-        user_analyzed: list[UserAnalyzed] = (
-            await session.scalars(
-                select(UserAnalyzed)
-                .order_by(asc(UserAnalyzed.id))
-                .slice(
-                    (current_page - 1) * q_string_per_page,
-                    current_page * q_string_per_page,
-                )
-            )
-        ).all()
-        t = ""
-        for user in user_analyzed:
-            msg = user.additional_message[:10].replace("\n", "")
-            t += f"{user.id}. {'🟢' if user.sended else '🔴'} @{user.username} - {msg}...\n"
-    if not t:
-        await query.message.edit_text(
-            text="История пуста", reply_markup=await ik_back()
-        )
+    len_data = await session.scalar(select(func.count(UserAnalyzed.id)))
+    if not len_data:
+        await query.message.edit_text(text="История пуста", reply_markup=await ik_back())
         return
+    all_page = await fn.count_page(len_data, q_string_per_page)
+    current_page = current_page or all_page
+    user_analyzed: list[UserAnalyzed] = (
+        await session.scalars(
+            select(UserAnalyzed)
+            .order_by(asc(UserAnalyzed.id))
+            .slice(
+                (current_page - 1) * q_string_per_page,
+                current_page * q_string_per_page,
+            )
+        )
+    ).all()
+    t = ""
+    for user in user_analyzed:
+        msg = user.additional_message[:10].replace("\n", "")
+        t += f"{user.id}. {'🟢' if user.sended else '🔴'} @{user.username} - {msg}...\n"
     if len(t) > fn.max_length_message:
         t = t[: fn.max_length_message - 4]
         t += "..."
@@ -739,16 +720,11 @@ async def history(
 @router.callback_query(F.data.split(":")[0] == "h")
 async def arrow_history(
     query: CallbackQuery,
+    user: UserManager,
     redis: Redis,
     state: FSMContext,
-    sessionmaker: async_sessionmaker,
-):
-    if (
-        not query.data
-        or not query.message
-        or isinstance(query.message, InaccessibleMessage)
-    ):
-        return
+    session: AsyncSession,
+) -> None:
     arrow = query.data.split(":")[1]
     data = await state.get_data()
     page = data.get("current_page", 1)
@@ -759,7 +735,7 @@ async def arrow_history(
         case "arrow_right":
             page = page + 1 if page < all_page else 1
     try:
-        await history(query, state, sessionmaker, current_page=page)
+        await history(query, user, state, session, current_page=page)
     except Exception as e:
         logger.exception(e)
         await query.answer("Страница всего одна :(")
@@ -768,69 +744,42 @@ async def arrow_history(
 @router.callback_query(UserState.action, F.data.split(":")[0] == "cancel")
 async def cancel_action_chat_add_or_delete(
     query: CallbackQuery,
+    user: UserManager,
     redis: Redis,
     state: FSMContext,
-    sessionmaker: async_sessionmaker,
-):
-    if (
-        not query.data
-        or not query.message
-        or isinstance(query.message, InaccessibleMessage)
-    ):
-        return
+    session: AsyncSession,
+) -> None:
     to = query.data.split(":")[1]
     type_data = (await state.get_data())["type_data"]
     match to:
         case "default":
-            await info(query, redis, state, sessionmaker, type_data)
+            await info(query, user, state, type_data=type_data)
         case "add_or_delete":
-            await info(query, redis, state, sessionmaker, type_data)
+            await info(query, user, state, type_data=type_data)
 
 
 @router.callback_query(UserState.action, F.data.split(":")[0] == "back")
 async def back_action(
     query: CallbackQuery,
+    user: UserManager,
     redis: Redis,
     state: FSMContext,
+    session: AsyncSession,
     sessionmaker: async_sessionmaker,
-):
-    if (
-        not query.data
-        or not query.message
-        or isinstance(query.message, InaccessibleMessage)
-    ):
-        return
+) -> None:
     to = query.data.split(":")[1]
     match to:
         case "default":
-            await query.message.edit_text(
-                text="Главное меню", reply_markup=await ik_main_menu()
-            )
+            await query.message.edit_text(text="Главное меню", reply_markup=await ik_main_menu())
             await state.clear()
         case "action_with_bot":
             data = await state.get_data()
-            bot_id = data.get("bot_id")
-            if bot_id:
-                async with sessionmaker() as session:
-                    await session.execute(
-                        delete(Job).where(
-                            (
-                                and_(
-                                    Job.bot_id == bot_id,
-                                    Job.task == JobName.processed_users.value,
-                                )
-                            )
-                        )
-                    )
-                    await session.commit()
-            await query.message.edit_text(
-                "Боты", reply_markup=await ik_action_with_bot()
-            )
+            await query.message.edit_text("Боты", reply_markup=await ik_action_with_bot())
             await state.clear()
             await state.update_data(data)
         case "chat_add_or_delete":
-            current_page = (await state.get_data())["current_page"]
-            all_page = (await state.get_data())["all_page"]
+            current_page = (await state.get_data()).get("current_page", 1)
+            all_page = (await state.get_data()).get("all_page", 1)
             await query.message.edit_reply_markup(
                 reply_markup=await ik_add_or_delete(
                     back_to="action_with_bot",
@@ -839,38 +788,42 @@ async def back_action(
                 ),
             )
         case "base_add_or_delete":
-            current_page = (await state.get_data())["current_page"]
-            all_page = (await state.get_data())["all_page"]
+            data = await state.get_data()
+            current_page = (await state.get_data()).get("current_page", 1)
+            all_page = (await state.get_data()).get("all_page", 1)
             await query.message.edit_reply_markup(
-                reply_markup=await ik_add_or_delete(
-                    current_page=current_page, all_page=all_page
-                )
+                reply_markup=await ik_add_or_delete(current_page=current_page, all_page=all_page)
             )
         case "folders":
             await add_job_to_get_processed_users(
                 query,
+                user,
                 state,
+                session,
                 sessionmaker,
                 from_state=True,
             )
+        case "accept_folders":
+            await get_processed_users_from_folder(query, user, state, session, sessionmaker, from_state=True)
 
 
 @router.callback_query(F.data == "bots")
 async def show_bots(
     query: CallbackQuery,
-    redis: Redis,
-    sessionmaker: async_sessionmaker,
-):
-    if not query.message or isinstance(query.message, InaccessibleMessage):
+    session: AsyncSession,
+) -> None:
+    bots_data = (await session.scalars(select(Bot))).all()
+    if not bots_data:
+        await query.message.edit_text(text="У вас нет ботов", reply_markup=await ik_back())
         return
-    bots_data = await fn.get_available_bots(sessionmaker)
-    async with sessionmaker() as session:
-        for bot in bots_data:
-            if bot.name:
-                continue
-            job = Job(task=JobName.get_me_name.value, bot_id=bot.id)
-            session.add(job)
-        await session.commit()
+    for bot in bots_data:
+        r = await bot_has_started(bot.phone, path_to_folder)
+        bot.is_connected = r
+        if bot.name:
+            continue
+        job = Job(task=JobName.get_me_name.value)
+        bot.jobs.append(job)
+    await session.commit()
     await query.message.edit_text(
         "Боты",
         reply_markup=await ik_available_bots(bots_data),
@@ -880,25 +833,14 @@ async def show_bots(
 @router.callback_query(F.data.split(":")[0] == "back")
 async def back(
     query: CallbackQuery,
+    user: UserManager,
     redis: Redis,
     state: FSMContext,
-    sessionmaker: async_sessionmaker,
-):
-    if (
-        not query.data
-        or not query.message
-        or isinstance(query.message, InaccessibleMessage)
-    ):
-        return
+    session: AsyncSession,
+) -> None:
     to = query.data.split(":")[1]
     match to:
         case "default":
-            await query.message.edit_text(
-                text="Главное меню", reply_markup=await ik_main_menu()
-            )
+            await query.message.edit_text(text="Главное меню", reply_markup=await ik_main_menu())
         case "bots":
-            bots_data = await fn.get_available_bots(sessionmaker)
-            await query.message.edit_text(
-                "Боты",
-                reply_markup=await ik_available_bots(bots_data),
-            )
+            await query.message.edit_text("Боты", reply_markup=await ik_available_bots(user.bots))
