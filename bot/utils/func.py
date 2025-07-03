@@ -123,7 +123,7 @@ class Function:
     ) -> str:
         chats_enumerate = list(enumerate(chats))
         chats_ = chats_enumerate[(page - 1) * q_string_per_page : page * q_string_per_page]
-        s = "".join(f"{ind + 1}) {i.id_chat} ({i.title or '🌀'}){sep}" for ind, i in chats_)
+        s = "".join(f"{ind + 1}) {i.chat_id} ({i.title or '🌀'}){sep}" for ind, i in chats_)
         if len(s) > Function.max_length_message:
             return await Function.watch_data_chats(
                 chats,
