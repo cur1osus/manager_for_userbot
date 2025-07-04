@@ -40,7 +40,7 @@ async def ik_available_bots(bots_data: list[Bot], back_to: str = "default") -> I
 
 async def ik_action_with_bot(back_to: str = "default") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text="🗑 Удалить", callback_data="delete")
+    # builder.button(text="🗑 Удалить", callback_data="delete")
     builder.button(text="⛓️‍💥 Отключить", callback_data="disconnected")
     # builder.button(text="🔄 РеСтарт", callback_data="restart_bot")
     builder.button(text="🟢 Старт", callback_data="start")
