@@ -30,7 +30,7 @@ async def ik_available_bots(bots_data: list[Bot], back_to: str = "default") -> I
     if bots_data:
         for bot in bots_data:
             builder.button(
-                text=f"{'❇️' if bot.is_connected else '⛔️'} {'🟢' if bot.is_started else '🔴'} {bot.phone} ({bot.name or '🌀'})",
+                text=f"{'❇️' if bot.is_connected else '⛔️'} {'🟢' if bot.is_started else '🔴'} {bot.phone} ({bot.name or '🌀'}) [{bot.id}]",
                 callback_data=f"bot_id:{bot.id}",
             )
     builder.button(text="<-", callback_data=f"back:{back_to}")

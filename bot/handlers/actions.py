@@ -62,7 +62,7 @@ async def manage_bot(
     bot_id = int(query.data.split(":")[1])
     bot = await user.get_obj_bot(bot_id)
     if not bot:
-        return await query.message.edit_text(text="Нет доступа")
+        return await query.message.edit_text(text="Нет доступа", reply_markup=await ik_back())
     await state.update_data(bot_id=bot_id)
     if bot.is_connected:
         await query.message.edit_text(
@@ -708,7 +708,7 @@ async def history(
         msg = _user.additional_message[:10].replace("\n", "")
         if not _user.sended:
             continue
-        t += f"{_user.id}. @{_user.username} - {msg}...\n"
+        t += f"{_user.id}. ({_user.bot_id}) @{_user.username} {msg}...\n"
     if len(t) > fn.max_length_message:
         t = t[: fn.max_length_message - 4]
         t += "..."
