@@ -157,6 +157,26 @@ async def stop_bot_process(
     )
 
 
+@router.callback_query(F.data == "disconnected")
+async def disconnected_bot_(
+    query: CallbackQuery,
+    user: UserManager,
+    redis: Redis,
+    state: FSMContext,
+    session: AsyncSession,
+) -> None:
+    data = await state.get_data()
+    bot_id = data["bot_id"]
+    bot: Bot = await user.get_obj_bot(bot_id)
+    if bot is None:
+        return
+    bot.is_connected = False
+    bot.is_started = False
+    await delete_bot(phone=bot.phone, path_to_folder=path_to_folder)
+    await session.commit()
+    await query.message.edit_text("Бот отключен", reply_markup=await ik_main_menu())
+
+
 @router.callback_query(F.data == "delete")
 async def delete_bot_(
     query: CallbackQuery,
@@ -170,10 +190,11 @@ async def delete_bot_(
     bot: Bot = await user.get_obj_bot(bot_id)
     if bot is None:
         return
-    bot.is_connected = False
     await delete_bot(phone=bot.phone, path_to_folder=path_to_folder)
+    await session.delete(bot)
     await session.commit()
-    await query.message.edit_text("Бот отключен", reply_markup=await ik_main_menu())
+    await state.clear()
+    await query.message.edit_text("Бот удален", reply_markup=await ik_main_menu())
 
 
 @router.callback_query(F.data.split(":")[0] == "info")
@@ -708,7 +729,7 @@ async def history(
         msg = _user.additional_message[:10].replace("\n", "")
         if not _user.sended:
             continue
-        t += f"{_user.id}. ({_user.bot_id}) @{_user.username} {msg}...\n"
+        t += f"{_user.id}. [{_user.bot_id}] @{_user.username} {msg}...\n"
     if len(t) > fn.max_length_message:
         t = t[: fn.max_length_message - 4]
         t += "..."
