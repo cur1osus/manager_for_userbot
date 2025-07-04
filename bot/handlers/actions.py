@@ -191,7 +191,7 @@ async def delete_bot_(
     if bot is None:
         return
     await delete_bot(phone=bot.phone, path_to_folder=path_to_folder)
-    await session.delete(bot)
+    bot.user_manager_id = None
     await session.commit()
     await state.clear()
     await query.message.edit_text("Бот удален", reply_markup=await ik_main_menu())
