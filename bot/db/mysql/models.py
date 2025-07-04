@@ -15,7 +15,7 @@ from .base import Base
 class Bot(Base):
     __tablename__ = "bots"
 
-    user_manager_id: Mapped[int] = mapped_column(ForeignKey("user_managers.id"))
+    user_manager_id: Mapped[int] = mapped_column(ForeignKey("user_managers.id"), nullable=True)
     manager: Mapped["UserManager"] = relationship(
         back_populates="bots",
         cascade="all, delete",
@@ -36,7 +36,7 @@ class Bot(Base):
 class Job(Base):
     __tablename__ = "jobs"
 
-    bot_id: Mapped[int] = mapped_column(ForeignKey("bots.id"))
+    bot_id: Mapped[int] = mapped_column(ForeignKey("bots.id"), nullable=True)
     bot: Mapped[Bot] = relationship(back_populates="jobs")
 
     task: Mapped[str] = mapped_column(String(50))
@@ -54,7 +54,7 @@ class JobName(Enum):
 class MonitoringChat(Base):
     __tablename__ = "monitoring_chats"
 
-    bot_id: Mapped[int] = mapped_column(ForeignKey("bots.id"))
+    bot_id: Mapped[int] = mapped_column(ForeignKey("bots.id"), nullable=True)
     bot: Mapped[Bot] = relationship(back_populates="chats")
 
     chat_id: Mapped[str] = mapped_column(String(50))
@@ -64,7 +64,7 @@ class MonitoringChat(Base):
 class UserAnalyzed(Base):
     __tablename__ = "users_analyzed"
 
-    bot_id: Mapped[int] = mapped_column(ForeignKey("bots.id"))
+    bot_id: Mapped[int] = mapped_column(ForeignKey("bots.id"), nullable=True)
     bot: Mapped[Bot] = relationship(back_populates="users_analyzed")
 
     id_user: Mapped[int] = mapped_column(BigInteger, unique=True)
@@ -78,7 +78,7 @@ class UserAnalyzed(Base):
 class KeyWord(Base):
     __tablename__ = "keywords"
 
-    user_manager_id: Mapped[int] = mapped_column(ForeignKey("user_managers.id"))
+    user_manager_id: Mapped[int] = mapped_column(ForeignKey("user_managers.id"), nullable=True)
     manager: Mapped["UserManager"] = relationship(back_populates="keywords")
 
     word: Mapped[str] = mapped_column(String(500), unique=True, nullable=False)
@@ -87,7 +87,7 @@ class KeyWord(Base):
 class IgnoredWord(Base):
     __tablename__ = "ignored_words"
 
-    user_manager_id: Mapped[int] = mapped_column(ForeignKey("user_managers.id"))
+    user_manager_id: Mapped[int] = mapped_column(ForeignKey("user_managers.id"), nullable=True)
     manager: Mapped["UserManager"] = relationship(back_populates="ignored_words")
 
     word: Mapped[str] = mapped_column(String(500), unique=True, nullable=False)
@@ -96,7 +96,7 @@ class IgnoredWord(Base):
 class MessageToAnswer(Base):
     __tablename__ = "messages_to_answer"
 
-    user_manager_id: Mapped[int] = mapped_column(ForeignKey("user_managers.id"))
+    user_manager_id: Mapped[int] = mapped_column(ForeignKey("user_managers.id"), nullable=True)
     manager: Mapped["UserManager"] = relationship(back_populates="messages_to_answer")
 
     sentence: Mapped[str] = mapped_column(String(500), unique=True, nullable=False)
@@ -105,7 +105,7 @@ class MessageToAnswer(Base):
 class BannedUser(Base):
     __tablename__ = "banned_users"
 
-    user_manager_id: Mapped[int] = mapped_column(ForeignKey("user_managers.id"))
+    user_manager_id: Mapped[int] = mapped_column(ForeignKey("user_managers.id"), nullable=True)
     manager: Mapped["UserManager"] = relationship(back_populates="banned_users")
 
     id_user: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=True)
