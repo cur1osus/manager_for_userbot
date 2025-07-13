@@ -799,7 +799,7 @@ async def history(
         msg = _user.additional_message[:10].replace("\n", "")
         if not _user.sended:
             continue
-        t += f"{_user.id if _user.id else ''}. [{_user.bot_id}] @{_user.username} {msg}...\n"
+        t += f"{_user.id}. [{_user.bot_id if _user.bot_id else ''}] @{_user.username} {msg}...\n"
     if len(t) > fn.max_length_message:
         t = t[: fn.max_length_message - 4]
         t += "..."
