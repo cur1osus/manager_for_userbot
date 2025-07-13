@@ -925,10 +925,9 @@ async def show_bots(
     for bot in bots_data:
         r = await bot_has_started(bot.phone, path_to_folder)
         bot.is_connected = r
-        if bot.name:
-            continue
-        job = Job(task=JobName.get_me_name.value)
-        bot.jobs.append(job)
+        if r:
+            job = Job(task=JobName.get_me_name.value)
+            bot.jobs.append(job)
     await session.commit()
     await query.message.edit_text(
         "Боты",
