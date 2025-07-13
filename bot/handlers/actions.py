@@ -9,7 +9,6 @@ import msgpack  # type: ignore
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
-from config import path_to_folder, sep
 from sqlalchemy import and_, asc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -43,6 +42,7 @@ from bot.keyboards.inline import (
 from bot.states import UserState
 from bot.utils import fn
 from bot.utils.manager import bot_has_started, delete_bot, start_bot
+from config import path_to_folder, sep
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -60,9 +60,11 @@ async def manage_bot(
     session: AsyncSession,
 ) -> None:
     bot_id = int(query.data.split(":")[1])
+
     bot = await user.get_obj_bot(bot_id)
     if not bot:
-        return await query.message.edit_text(text="Нет доступа", reply_markup=await ik_back())
+        await query.message.edit_text(text="Нет доступа", reply_markup=await ik_back())
+        return
     await state.update_data(bot_id=bot_id)
     if bot.is_connected:
         await query.message.edit_text(
@@ -85,6 +87,9 @@ async def connect_bot(
     session: AsyncSession,
 ) -> None:
     bot_id = (await state.get_data()).get("bot_id")
+    if not bot_id:
+        await query.message.edit_text(text="bot_id пустой")
+        return
     bot = await user.get_obj_bot(bot_id)
     phone_code_hash = await fn.send_code_via_telethon(
         bot.phone,
@@ -109,16 +114,23 @@ async def connect_bot(
 
 @router.callback_query(F.data == "restart_bot")
 async def restart_bot(
-    query: CallbackQuery, user: UserManager, redis: Redis, state: FSMContext, session: AsyncSession
+    query: CallbackQuery,
+    user: UserManager,
+    redis: Redis,
+    state: FSMContext,
+    session: AsyncSession,
 ) -> None:
     bot_id = (await state.get_data())["bot_id"]
-    bot: Bot = await user.get_obj_bot(bot_id)
+    bot: Bot | None = await user.get_obj_bot(bot_id)
     if not bot:
         return
+
     phone = bot.phone
     await delete_bot(phone, path_to_folder)
     await start_bot(phone, path_to_folder)
-    await query.message.edit_text("Бот подключен и запущен", reply_markup=await ik_main_menu())
+    await query.message.edit_text(
+        "Бот подключен и запущен", reply_markup=await ik_main_menu()
+    )
 
 
 @router.callback_query(F.data == "start")
@@ -130,7 +142,7 @@ async def start_bot_process(
     session: AsyncSession,
 ) -> None:
     bot_id = (await state.get_data())["bot_id"]
-    bot: Bot = await user.get_obj_bot(bot_id)
+    bot: Bot | None = await user.get_obj_bot(bot_id)
     bot.is_started = True
     await session.commit()
     await query.message.edit_text(
@@ -148,7 +160,7 @@ async def stop_bot_process(
     session: AsyncSession,
 ) -> None:
     bot_id = (await state.get_data())["bot_id"]
-    bot: Bot = await user.get_obj_bot(bot_id)
+    bot: Bot | None = await user.get_obj_bot(bot_id)
     bot.is_started = False
     await session.commit()
     await query.message.edit_text(
@@ -167,7 +179,7 @@ async def disconnected_bot_(
 ) -> None:
     data = await state.get_data()
     bot_id = data["bot_id"]
-    bot: Bot = await user.get_obj_bot(bot_id)
+    bot: Bot | None = await user.get_obj_bot(bot_id)
     if bot is None:
         return
     bot.is_connected = False
@@ -187,11 +199,11 @@ async def delete_bot_(
 ) -> None:
     data = await state.get_data()
     bot_id = data["bot_id"]
-    bot: Bot = await user.get_obj_bot(bot_id)
+    bot: Bot | None = await user.get_obj_bot(bot_id)
     if bot is None:
         return
+    user.bots.remove(bot)
     await delete_bot(phone=bot.phone, path_to_folder=path_to_folder)
-    bot.user_manager_id = None
     await session.commit()
     await state.clear()
     await query.message.edit_text("Бот удален", reply_markup=await ik_main_menu())
@@ -217,6 +229,7 @@ async def info(
     kwargs_for_keyboard: dict[str, Any] = {}
     all_page = None
     data_str = None
+    data = []
     match type_data:
         case "answer":
             data = [i.sentence for i in user.messages_to_answer]
@@ -228,7 +241,9 @@ async def info(
             bot_id = (await state.get_data())["bot_id"]
             data = (await user.get_obj_bot(bot_id)).chats
             q_string_per_page = 10
-            all_page = await fn.count_page(len_data=len(data), q_string_per_page=q_string_per_page)
+            all_page = await fn.count_page(
+                len_data=len(data), q_string_per_page=q_string_per_page
+            )
             current_page = current_page or all_page
             data_str = (
                 await fn.watch_data_chats(
@@ -255,7 +270,9 @@ async def info(
 
     if not data_str:
         q_string_per_page = 10
-        all_page = await fn.count_page(len_data=len(data), q_string_per_page=q_string_per_page)
+        all_page = await fn.count_page(
+            len_data=len(data), q_string_per_page=q_string_per_page
+        )
         current_page = current_page or all_page
         data_str = await fn.watch_data(
             data,
@@ -320,9 +337,13 @@ async def add(
     type_data = (await state.get_data())["type_data"]
     match type_data:
         case "answer":
-            await query.message.edit_text("Введите ответ(-ы)", reply_markup=await ik_cancel_action())
+            await query.message.edit_text(
+                "Введите ответ(-ы)", reply_markup=await ik_cancel_action()
+            )
         case "ban":
-            await query.message.edit_text("Введите username(-s)", reply_markup=await ik_cancel_action())
+            await query.message.edit_text(
+                "Введите username(-s)", reply_markup=await ik_cancel_action()
+            )
         case "chat":
             await query.message.edit_text(
                 "Введите chat_id(-s)",
@@ -334,14 +355,15 @@ async def add(
                 reply_markup=await ik_cancel_action(),
             )
         case "keyword":
-            await query.message.edit_text("Введите триггерное слово(-а)", reply_markup=await ik_cancel_action())
+            await query.message.edit_text(
+                "Введите триггерное слово(-а)", reply_markup=await ik_cancel_action()
+            )
     await state.set_state(UserState.action)
 
 
 @router.message(UserState.action)
 async def processing_message_to_add(
     message: Message,
-    redis: Redis,
     user: UserManager,
     state: FSMContext,
     session: AsyncSession,
@@ -351,27 +373,39 @@ async def processing_message_to_add(
     match type_data:
         case "answer":
             messages_to_answer = await user.awaitable_attrs.messages_to_answer
-            data_to_add = await fn.collapse_repeated_data([i.sentence for i in messages_to_answer], data_to_add)
-            messages_to_answer.extend([MessageToAnswer(sentence=i) for i in data_to_add])
+            data_to_add = await fn.collapse_repeated_data(
+                [i.sentence for i in messages_to_answer], data_to_add
+            )
+            messages_to_answer.extend(
+                [MessageToAnswer(sentence=i) for i in data_to_add]
+            )
         case "ban":
             banned_users = await user.awaitable_attrs.banned_users
-            data_to_add = await fn.collapse_repeated_data([i.username for i in banned_users], data_to_add)
+            data_to_add = await fn.collapse_repeated_data(
+                [i.username for i in banned_users], data_to_add
+            )
             banned_users.extend([BannedUser(username=i) for i in data_to_add])
         case "chat":
             bot_id = (await state.get_data())["bot_id"]
             bot = await user.get_obj_bot(bot_id)
             chats = await bot.awaitable_attrs.chats
-            data_to_add = await fn.collapse_repeated_data([i.chat_id for i in chats], data_to_add)
+            data_to_add = await fn.collapse_repeated_data(
+                [i.chat_id for i in chats], data_to_add
+            )
             chats.extend([MonitoringChat(chat_id=i) for i in data_to_add])
             job = Job(task=JobName.get_chat_title.value, bot=bot)
             session.add(job)
         case "ignore":
             ignored_words = await user.awaitable_attrs.ignored_words
-            data_to_add = await fn.collapse_repeated_data([i.word for i in ignored_words], data_to_add)
+            data_to_add = await fn.collapse_repeated_data(
+                [i.word for i in ignored_words], data_to_add
+            )
             ignored_words.extend([IgnoredWord(word=i) for i in data_to_add])
         case "keyword":
             keywords = await user.awaitable_attrs.keywords
-            data_to_add = await fn.collapse_repeated_data([i.word for i in keywords], data_to_add)
+            data_to_add = await fn.collapse_repeated_data(
+                [i.word for i in keywords], data_to_add
+            )
             keywords.extend([KeyWord(word=i) for i in data_to_add])
     await session.commit()
     current_page = (await state.get_data())["current_page"]
@@ -386,7 +420,10 @@ async def processing_message_to_add(
 
 @router.callback_query(UserState.action, F.data == "del")
 async def delete_(
-    query: CallbackQuery, user: UserManager, state: FSMContext, sessionmaker: async_sessionmaker | None = None
+    query: CallbackQuery,
+    user: UserManager,
+    state: FSMContext,
+    sessionmaker: async_sessionmaker | None = None,
 ) -> None:
     type_data = (await state.get_data())["type_data"]
     kwargs_for_keyboard: dict[str, str] = {"back_to": "base_add_or_delete"}
@@ -410,7 +447,9 @@ async def delete_(
             ids = [i.id for i in user.keywords]
         case _:
             return
-    await query.message.edit_reply_markup(reply_markup=await ik_num_matrix_del(ids, **kwargs_for_keyboard))
+    await query.message.edit_reply_markup(
+        reply_markup=await ik_num_matrix_del(ids, **kwargs_for_keyboard)
+    )
     await state.update_data(ids=ids)
     await state.set_state(UserState.action)
 
@@ -511,7 +550,9 @@ async def add_job_to_get_processed_users(
             )
         sleep_sec = 0.5
         await asyncio.sleep(sleep_sec)
-        await query.message.edit_text(text="Получаю названия папок 🌥", reply_markup=None)
+        await query.message.edit_text(
+            text="Получаю названия папок 🌥", reply_markup=None
+        )
         await asyncio.sleep(sleep_sec)
         await query.message.edit_text(text="Получаю названия папок 🌥⛅️")
         await asyncio.sleep(sleep_sec)
@@ -541,7 +582,9 @@ async def add_job_to_get_processed_users(
 
 
 @router.callback_query(UserState.action, F.data.split(":")[0] == "folder")
-async def choice_folder(query: CallbackQuery, user: UserManager, state: FSMContext, session: AsyncSession) -> None:
+async def choice_folder(
+    query: CallbackQuery, user: UserManager, state: FSMContext, session: AsyncSession
+) -> None:
     data = await state.get_data()
     target_folder = query.data.split(":")[1]
     choice_folders = data["choice_folders"]
@@ -564,16 +607,22 @@ async def get_processed_users_from_folder(
 ) -> None:
     data = await state.get_data()
     if from_state:
-        folders = data.get("folders")
+        folders = data.get("folders", [])
         name_folders = [i["name"] for i in folders]
     else:
         choice_folders: dict[str, bool] = data["choice_folders"]
         raw_folders: list[dict[str, str]] = data["raw_folders"]
-        folders = [raw_folder for raw_folder in raw_folders if choice_folders[raw_folder["name"]]]
+        folders = [
+            raw_folder
+            for raw_folder in raw_folders
+            if choice_folders[raw_folder["name"]]
+        ]  # pyright: ignore
 
         bot_id = data["bot_id"]
         bot = await user.get_obj_bot(bot_id)
-        job = Job(task=JobName.processed_users.value, task_metadata=msgpack.packb(folders))
+        job = Job(
+            task=JobName.processed_users.value, task_metadata=msgpack.packb(folders)
+        )
         bot.jobs.append(job)
         await session.commit()
 
@@ -584,7 +633,9 @@ async def get_processed_users_from_folder(
             async with sessionmaker() as session:
                 sleep_sec = 0.5
                 await asyncio.sleep(sleep_sec)
-                await query.message.edit_text(text="Получаю папки 😐", reply_markup=None)
+                await query.message.edit_text(
+                    text="Получаю папки 😐", reply_markup=None
+                )
                 await asyncio.sleep(sleep_sec)
                 await query.message.edit_text(text="Получаю папки 😐🙂")
                 await asyncio.sleep(sleep_sec)
@@ -613,17 +664,24 @@ async def get_processed_users_from_folder(
                 )
                 return
             tries += 1
-        folders: list[dict[str, list[dict[str, Any]] | str]] = msgpack.unpackb(job.answer)
+        folders: list[dict[str, list[dict[str, Any]] | str]] = msgpack.unpackb(
+            job.answer
+        )
         name_folders = [i["name"] for i in folders]
         await state.update_data(folders=folders)
     await query.message.edit_text(
         text="Папки",
-        reply_markup=await ik_folders_with_users(name_folders, back_to="action_with_bot"),
+        reply_markup=await ik_folders_with_users(
+            name_folders,  # pyright: ignore
+            back_to="action_with_bot",
+        ),
     )
 
 
 @router.callback_query(UserState.action, F.data.split(":")[0] == "target_folder")
-async def view_target_folder(query: CallbackQuery, state: FSMContext, current_page: int | None = None) -> None:
+async def view_target_folder(
+    query: CallbackQuery, state: FSMContext, current_page: int | None = None
+) -> None:
     data = await state.get_data()
     if current_page:
         folder = data["current_folder"]
@@ -634,8 +692,16 @@ async def view_target_folder(query: CallbackQuery, state: FSMContext, current_pa
     page = current_page or 1
     q_string_per_page = 10
     formatting_choices = data.get("formatting_choices", [True, True, False])
-    all_page = await fn.count_page(len(folder.get("pinned_peers", [])), q_string_per_page)
-    t = await fn.watch_processed_users(folder.get("pinned_peers"), sep, q_string_per_page, page, formatting_choices)
+    all_page = await fn.count_page(
+        len(folder.get("pinned_peers", [])), q_string_per_page
+    )
+    t = await fn.watch_processed_users(
+        folder.get("pinned_peers"),  # pyright: ignore
+        sep,
+        q_string_per_page,
+        page,
+        formatting_choices,
+    )
     await state.update_data(
         current_page=page,
         all_page=all_page,
@@ -679,7 +745,9 @@ async def arrow_processed_users(
         await query.answer("Страница всего одна :(")
 
 
-@router.callback_query(UserState.action, F.data.in_(["f_username", "f_first_name", "f_copy"]))
+@router.callback_query(
+    UserState.action, F.data.in_(["f_username", "f_first_name", "f_copy"])
+)
 async def formatting_(
     query: CallbackQuery,
     state: FSMContext,
@@ -710,7 +778,9 @@ async def history(
     q_string_per_page = 15
     len_data = await session.scalar(select(func.count(UserAnalyzed.id)))
     if not len_data:
-        await query.message.edit_text(text="История пуста", reply_markup=await ik_back())
+        await query.message.edit_text(
+            text="История пуста", reply_markup=await ik_back()
+        )
         return
     all_page = await fn.count_page(len_data, q_string_per_page)
     current_page = current_page or all_page
@@ -723,13 +793,13 @@ async def history(
                 current_page * q_string_per_page,
             )
         )
-    ).all()
+    ).all()  # pyright: ignore
     t = ""
     for _user in user_analyzed:
         msg = _user.additional_message[:10].replace("\n", "")
         if not _user.sended:
             continue
-        t += f"{_user.id}. [{_user.bot_id}] @{_user.username} {msg}...\n"
+        t += f"{_user.id if _user.id else ''}. [{_user.bot_id}] @{_user.username} {msg}...\n"
     if len(t) > fn.max_length_message:
         t = t[: fn.max_length_message - 4]
         t += "..."
@@ -796,11 +866,15 @@ async def back_action(
     to = query.data.split(":")[1]
     match to:
         case "default":
-            await query.message.edit_text(text="Главное меню", reply_markup=await ik_main_menu())
+            await query.message.edit_text(
+                text="Главное меню", reply_markup=await ik_main_menu()
+            )
             await state.clear()
         case "action_with_bot":
             data = await state.get_data()
-            await query.message.edit_text("Боты", reply_markup=await ik_action_with_bot())
+            await query.message.edit_text(
+                "Боты", reply_markup=await ik_action_with_bot()
+            )
             await state.clear()
             await state.update_data(data)
         case "chat_add_or_delete":
@@ -818,7 +892,9 @@ async def back_action(
             current_page = (await state.get_data()).get("current_page", 1)
             all_page = (await state.get_data()).get("all_page", 1)
             await query.message.edit_reply_markup(
-                reply_markup=await ik_add_or_delete(current_page=current_page, all_page=all_page)
+                reply_markup=await ik_add_or_delete(
+                    current_page=current_page, all_page=all_page
+                )
             )
         case "folders":
             await add_job_to_get_processed_users(
@@ -830,7 +906,9 @@ async def back_action(
                 from_state=True,
             )
         case "accept_folders":
-            await get_processed_users_from_folder(query, user, state, session, sessionmaker, from_state=True)
+            await get_processed_users_from_folder(
+                query, user, state, session, sessionmaker, from_state=True
+            )
 
 
 @router.callback_query(F.data == "bots")
@@ -838,9 +916,11 @@ async def show_bots(
     query: CallbackQuery,
     session: AsyncSession,
 ) -> None:
-    bots_data = (await session.scalars(select(Bot))).all()
+    bots_data: list[Bot] = (await session.scalars(select(Bot))).all()  # pyright: ignore
     if not bots_data:
-        await query.message.edit_text(text="У вас нет ботов", reply_markup=await ik_back())
+        await query.message.edit_text(
+            text="У вас нет ботов", reply_markup=await ik_back()
+        )
         return
     for bot in bots_data:
         r = await bot_has_started(bot.phone, path_to_folder)
@@ -867,6 +947,10 @@ async def back(
     to = query.data.split(":")[1]
     match to:
         case "default":
-            await query.message.edit_text(text="Главное меню", reply_markup=await ik_main_menu())
+            await query.message.edit_text(
+                text="Главное меню", reply_markup=await ik_main_menu()
+            )
         case "bots":
-            await query.message.edit_text("Боты", reply_markup=await ik_available_bots(user.bots))
+            await query.message.edit_text(
+                "Боты", reply_markup=await ik_available_bots(user.bots)
+            )

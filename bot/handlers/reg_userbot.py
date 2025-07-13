@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import any_state
-from aiogram.types import CallbackQuery, InaccessibleMessage
+from aiogram.types import CallbackQuery
 from aiogram.types.reply_keyboard_remove import ReplyKeyboardRemove
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 

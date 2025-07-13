@@ -11,6 +11,7 @@ wheels/
 *.log
 /sessions
 *.session
+*.ropeproject
 test.py
 .env
 /.mypy_cache
