@@ -15,14 +15,20 @@ from .base import Base
 class Bot(Base):
     __tablename__ = "bots"
 
-    user_manager_id: Mapped[int] = mapped_column(ForeignKey("user_managers.id"), nullable=True)
+    user_manager_id: Mapped[int] = mapped_column(
+        ForeignKey("user_managers.id"), nullable=True
+    )
     manager: Mapped["UserManager"] = relationship(
         back_populates="bots",
         cascade="all, delete",
     )
-    chats: Mapped[list["MonitoringChat"]] = relationship(back_populates="bot", lazy="selectin")
+    chats: Mapped[list["MonitoringChat"]] = relationship(
+        back_populates="bot", lazy="selectin"
+    )
     jobs: Mapped[list["Job"]] = relationship(back_populates="bot", lazy="selectin")
-    users_analyzed: Mapped[list["UserAnalyzed"]] = relationship(back_populates="bot", lazy="selectin")
+    users_analyzed: Mapped[list["UserAnalyzed"]] = relationship(
+        back_populates="bot", lazy="selectin"
+    )
 
     name: Mapped[str] = mapped_column(String(50), nullable=True)
     phone: Mapped[str] = mapped_column(String(50), unique=True)
@@ -78,7 +84,9 @@ class UserAnalyzed(Base):
 class KeyWord(Base):
     __tablename__ = "keywords"
 
-    user_manager_id: Mapped[int] = mapped_column(ForeignKey("user_managers.id"), nullable=True)
+    user_manager_id: Mapped[int] = mapped_column(
+        ForeignKey("user_managers.id"), nullable=True
+    )
     manager: Mapped["UserManager"] = relationship(back_populates="keywords")
 
     word: Mapped[str] = mapped_column(String(500), unique=True, nullable=False)
@@ -87,7 +95,9 @@ class KeyWord(Base):
 class IgnoredWord(Base):
     __tablename__ = "ignored_words"
 
-    user_manager_id: Mapped[int] = mapped_column(ForeignKey("user_managers.id"), nullable=True)
+    user_manager_id: Mapped[int] = mapped_column(
+        ForeignKey("user_managers.id"), nullable=True
+    )
     manager: Mapped["UserManager"] = relationship(back_populates="ignored_words")
 
     word: Mapped[str] = mapped_column(String(500), unique=True, nullable=False)
@@ -96,7 +106,9 @@ class IgnoredWord(Base):
 class MessageToAnswer(Base):
     __tablename__ = "messages_to_answer"
 
-    user_manager_id: Mapped[int] = mapped_column(ForeignKey("user_managers.id"), nullable=True)
+    user_manager_id: Mapped[int] = mapped_column(
+        ForeignKey("user_managers.id"), nullable=True
+    )
     manager: Mapped["UserManager"] = relationship(back_populates="messages_to_answer")
 
     sentence: Mapped[str] = mapped_column(String(500), unique=True, nullable=False)
@@ -105,7 +117,9 @@ class MessageToAnswer(Base):
 class BannedUser(Base):
     __tablename__ = "banned_users"
 
-    user_manager_id: Mapped[int] = mapped_column(ForeignKey("user_managers.id"), nullable=True)
+    user_manager_id: Mapped[int] = mapped_column(
+        ForeignKey("user_managers.id"), nullable=True
+    )
     manager: Mapped["UserManager"] = relationship(back_populates="banned_users")
 
     id_user: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=True)
@@ -152,8 +166,4 @@ class UserManager(Base):
 
     async def get_obj_bot(self, bot_id: int) -> Bot | None:
         r: list[Bot] = [bot for bot in self.bots if bot.id == bot_id]
-        return r[0] if r else None
-
-    async def get_obj_by_id(self, id: int, list_obj: list[Any]) -> Any | None:
-        r = [i for i in list_obj if i.id == id]
         return r[0] if r else None

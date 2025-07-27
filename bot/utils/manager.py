@@ -13,27 +13,39 @@ PID_FILE = "_bot.pid"
 LOG_FILE = "_bot.log"
 
 
+# Более надёжная версия с полной отвязкой:
 async def start_bot(phone: str, path_to_folder: str) -> int:
     path_log = os.path.join(path_to_folder, f"{phone}{LOG_FILE}")
     path_pid = os.path.join(path_to_folder, f"{phone}{PID_FILE}")
-    # Открываем файл лога асинхронно через обычный open — asyncio не поддерживает асинхронный доступ к файлам
-    log = open(path_log, "a")
 
-    # Запускаем процесс через nohup, без '&', чтобы получить PID
+    os.makedirs(path_to_folder, exist_ok=True)
+
+    # Открываем файлы для перенаправления
+    log_file = open(path_log, "w")
+
+    # Запускаем процесс с полной отвязкой
     process = await asyncio.create_subprocess_exec(
         "uv",
         "run",
         BOT_NAME,
         phone,
-        stdout=log,
-        stderr=log,
-        preexec_fn=os.setpgrp,
+        stdout=log_file,
+        stderr=log_file,
+        stdin=log_file,
+        preexec_fn=lambda: os.setpgrp(),  # Создаём новую группу процессов
+        start_new_session=True,  # Отвязываем от сессии
     )
 
+    # Сохраняем PID в файл
     with open(path_pid, "w") as f:
         f.write(str(process.pid))
 
-    logger.info(f"Бот запущен с PID: {process.pid}")
+    logger.info(f"Бот запущен с PID: {process.pid} (полностью отвязан)")
+
+    # Закрываем файловый дескриптор
+    log_file.close()
+
+    # Не ждём завершения - процесс работает независимо
     return process.pid
 
 
@@ -63,7 +75,9 @@ async def delete_bot(phone: str, path_to_folder: str) -> None:
     except PermissionError:
         logger.info("Нет прав на завершение процесса")
 
-    await delete_files_by_name(path_to_folder, [f"{phone}_session.session", f"{phone}{PID_FILE}"])
+    await delete_files_by_name(
+        path_to_folder, [f"{phone}_session.session", f"{phone}{PID_FILE}"]
+    )
 
 
 async def delete_files_by_name(folder_path: str, filenames: list[str]) -> None:

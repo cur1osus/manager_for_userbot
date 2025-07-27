@@ -127,7 +127,7 @@ async def restart_bot(
 
     phone = bot.phone
     await delete_bot(phone, path_to_folder)
-    await start_bot(phone, path_to_folder)
+    asyncio.create_task(start_bot(phone, path_to_folder))
     await query.message.edit_text(
         "Бот подключен и запущен", reply_markup=await ik_main_menu()
     )
@@ -799,7 +799,7 @@ async def history(
         msg = _user.additional_message[:10].replace("\n", "")
         if not _user.sended:
             continue
-        t += f"{_user.id}. [{_user.bot_id if _user.bot_id else ''}] @{_user.username} {msg}...\n"
+        t += f"{_user.id}. {f'[{_user.bot_id}/]' if _user.bot_id else ''} @{_user.username} {msg}...\n"
     if len(t) > fn.max_length_message:
         t = t[: fn.max_length_message - 4]
         t += "..."

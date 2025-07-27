@@ -32,14 +32,18 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-async def startup(dispatcher: Dispatcher, bot: Bot, settings: Settings, redis: Redis) -> None:
+async def startup(
+    dispatcher: Dispatcher, bot: Bot, settings: Settings, redis: Redis
+) -> None:
     await bot.delete_webhook(drop_pending_updates=True)
 
     engine, db_session = await create_db_session_pool(settings)
 
     await init_db(engine)
 
-    dispatcher.workflow_data.update({"sessionmaker": db_session, "db_session_closer": partial(close_db, engine)})
+    dispatcher.workflow_data.update(
+        {"sessionmaker": db_session, "db_session_closer": partial(close_db, engine)}
+    )
 
     dispatcher.update.outer_middleware(DBSessionMiddleware(session_pool=db_session))
     dispatcher.update.outer_middleware(CheckUserMiddleware())
