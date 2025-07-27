@@ -56,6 +56,7 @@ dependencies = [
   "uvloop==0.21.0",
   "uvloop==0.21.0 ; sys_platform == 'darwin' or sys_platform == 'linux'",
   "yarl==1.18.3",
+  "cryptography>=45.0.5",
 ]
 
 [tool.pyright]

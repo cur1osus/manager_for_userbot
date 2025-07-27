@@ -17,6 +17,7 @@ from bot.keyboards.reply import rk_cancel
 from bot.states import UserState
 from bot.utils import fn
 from bot.utils.manager import start_bot
+import asyncio
 
 if TYPE_CHECKING:
     from aiogram.types import Message
@@ -28,7 +29,9 @@ path_to_folder = "sessions"
 
 
 @router.message(any_state, F.text == "Отмена")
-async def cancel_reg(message: Message, redis: Redis, state: FSMContext, sessionmaker: async_sessionmaker) -> None:
+async def cancel_reg(
+    message: Message, redis: Redis, state: FSMContext, sessionmaker: async_sessionmaker
+) -> None:
     await state.clear()
     await message.answer("Добавление бота отменено", reply_markup=ReplyKeyboardRemove())
     msg = await message.answer("Главное меню", reply_markup=await ik_main_menu())
@@ -36,28 +39,36 @@ async def cancel_reg(message: Message, redis: Redis, state: FSMContext, sessionm
 
 
 @router.callback_query(F.data == "add_new_bot")
-async def process_add_new_bot(query: CallbackQuery, user: UserManager, redis: Redis, state: FSMContext) -> None:
+async def process_add_new_bot(
+    query: CallbackQuery, user: UserManager, redis: Redis, state: FSMContext
+) -> None:
     await query.message.delete()
     await query.message.answer("Введите api_id", reply_markup=await rk_cancel())
     await state.set_state(UserState.enter_api_id)
 
 
 @router.message(UserState.enter_api_id)
-async def process_enter_api_id(message: Message, redis: Redis, state: FSMContext) -> None:
+async def process_enter_api_id(
+    message: Message, redis: Redis, state: FSMContext
+) -> None:
     await state.update_data(api_id=message.text)
     await message.answer("Введите api_hash", reply_markup=None)
     await state.set_state(UserState.enter_api_hash)
 
 
 @router.message(UserState.enter_api_hash)
-async def process_enter_api_hash(message: Message, redis: Redis, state: FSMContext) -> None:
+async def process_enter_api_hash(
+    message: Message, redis: Redis, state: FSMContext
+) -> None:
     await state.update_data(api_hash=message.text)
     await message.answer("Введите phone", reply_markup=None)
     await state.set_state(UserState.enter_phone)
 
 
 @router.message(UserState.enter_phone)
-async def process_enter_phone(message: Message, redis: Redis, state: FSMContext) -> None:
+async def process_enter_phone(
+    message: Message, redis: Redis, state: FSMContext
+) -> None:
     await state.update_data(phone=message.text)
     data = await state.get_data()
     api_id = data["api_id"]
@@ -91,7 +102,11 @@ async def process_enter_phone(message: Message, redis: Redis, state: FSMContext)
 
 @router.message(UserState.enter_code)
 async def process_enter_code(
-    message: Message, redis: Redis, state: FSMContext, session: AsyncSession, user: UserManager
+    message: Message,
+    redis: Redis,
+    state: FSMContext,
+    session: AsyncSession,
+    user: UserManager,
 ) -> None:
     data = await state.get_data()
 
@@ -108,7 +123,7 @@ async def process_enter_code(
         return
     r = await fn.create_telethon_session(
         phone,
-        code,
+        code,  # pyright: ignore
         int(api_id),
         api_hash,
         phone_code_hash,
@@ -133,13 +148,14 @@ async def process_enter_code(
             is_connected=True,
         )
         job = Job(task=JobName.get_me_name.value)
-        bot.jobs.append(job)
+        jobs = await bot.awaitable_attrs.jobs
+        jobs.append(job)
         bots = await user.awaitable_attrs.bots
         bots.append(bot)
         session.add(bot)
         await session.commit()
 
-    await start_bot(phone, path_to_folder)
+    asyncio.create_task(start_bot(phone, path_to_folder))
     await message.answer("Бот подключен и запущен", reply_markup=ReplyKeyboardRemove())
     await state.clear()
     msg = await message.answer("Главное меню", reply_markup=await ik_main_menu())

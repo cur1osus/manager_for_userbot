@@ -1,5 +1,4 @@
 from enum import Enum
-from typing import Any, Never
 
 from sqlalchemy import (
     BigInteger,
@@ -89,7 +88,7 @@ class KeyWord(Base):
     )
     manager: Mapped["UserManager"] = relationship(back_populates="keywords")
 
-    word: Mapped[str] = mapped_column(String(500), unique=True, nullable=False)
+    word: Mapped[str] = mapped_column(String(500), nullable=False)
 
 
 class IgnoredWord(Base):
@@ -100,7 +99,7 @@ class IgnoredWord(Base):
     )
     manager: Mapped["UserManager"] = relationship(back_populates="ignored_words")
 
-    word: Mapped[str] = mapped_column(String(500), unique=True, nullable=False)
+    word: Mapped[str] = mapped_column(String(500), nullable=False)
 
 
 class MessageToAnswer(Base):
@@ -111,7 +110,7 @@ class MessageToAnswer(Base):
     )
     manager: Mapped["UserManager"] = relationship(back_populates="messages_to_answer")
 
-    sentence: Mapped[str] = mapped_column(String(500), unique=True, nullable=False)
+    sentence: Mapped[str] = mapped_column(String(500), nullable=False)
 
 
 class BannedUser(Base):
@@ -122,7 +121,7 @@ class BannedUser(Base):
     )
     manager: Mapped["UserManager"] = relationship(back_populates="banned_users")
 
-    id_user: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=True)
+    id_user: Mapped[int] = mapped_column(BigInteger, nullable=True)
     username: Mapped[str] = mapped_column(String(50), nullable=True)
     is_banned: Mapped[bool] = mapped_column(default=False)
 
