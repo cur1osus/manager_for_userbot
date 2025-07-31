@@ -6,3 +6,7 @@ generate:
 .PHONY: migrate
 migrate:
 	uv run alembic upgrade head
+
+.PHONY: build
+build:
+	uv run -m bot

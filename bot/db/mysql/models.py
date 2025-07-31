@@ -15,16 +15,17 @@ class Bot(Base):
     __tablename__ = "bots"
 
     user_manager_id: Mapped[int] = mapped_column(
-        ForeignKey("user_managers.id"), nullable=True
+        ForeignKey("user_managers.id"), nullable=False
     )
-    manager: Mapped["UserManager"] = relationship(
-        back_populates="bots",
-        cascade="all, delete",
-    )
+    manager: Mapped["UserManager"] = relationship(back_populates="bots")
     chats: Mapped[list["MonitoringChat"]] = relationship(
-        back_populates="bot", lazy="selectin"
+        back_populates="bot", lazy="selectin", cascade="all, delete-orphan"
     )
-    jobs: Mapped[list["Job"]] = relationship(back_populates="bot", lazy="selectin")
+    jobs: Mapped[list["Job"]] = relationship(
+        back_populates="bot",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+    )
     users_analyzed: Mapped[list["UserAnalyzed"]] = relationship(
         back_populates="bot", lazy="selectin"
     )
@@ -41,7 +42,7 @@ class Bot(Base):
 class Job(Base):
     __tablename__ = "jobs"
 
-    bot_id: Mapped[int] = mapped_column(ForeignKey("bots.id"), nullable=True)
+    bot_id: Mapped[int] = mapped_column(ForeignKey("bots.id"), nullable=False)
     bot: Mapped[Bot] = relationship(back_populates="jobs")
 
     task: Mapped[str] = mapped_column(String(50))
@@ -59,7 +60,7 @@ class JobName(Enum):
 class MonitoringChat(Base):
     __tablename__ = "monitoring_chats"
 
-    bot_id: Mapped[int] = mapped_column(ForeignKey("bots.id"), nullable=True)
+    bot_id: Mapped[int] = mapped_column(ForeignKey("bots.id"), nullable=False)
     bot: Mapped[Bot] = relationship(back_populates="chats")
 
     chat_id: Mapped[str] = mapped_column(String(50))
@@ -84,7 +85,7 @@ class KeyWord(Base):
     __tablename__ = "keywords"
 
     user_manager_id: Mapped[int] = mapped_column(
-        ForeignKey("user_managers.id"), nullable=True
+        ForeignKey("user_managers.id"), nullable=False
     )
     manager: Mapped["UserManager"] = relationship(back_populates="keywords")
 
@@ -95,7 +96,7 @@ class IgnoredWord(Base):
     __tablename__ = "ignored_words"
 
     user_manager_id: Mapped[int] = mapped_column(
-        ForeignKey("user_managers.id"), nullable=True
+        ForeignKey("user_managers.id"), nullable=False
     )
     manager: Mapped["UserManager"] = relationship(back_populates="ignored_words")
 
@@ -106,7 +107,7 @@ class MessageToAnswer(Base):
     __tablename__ = "messages_to_answer"
 
     user_manager_id: Mapped[int] = mapped_column(
-        ForeignKey("user_managers.id"), nullable=True
+        ForeignKey("user_managers.id"), nullable=False
     )
     manager: Mapped["UserManager"] = relationship(back_populates="messages_to_answer")
 
@@ -117,7 +118,7 @@ class BannedUser(Base):
     __tablename__ = "banned_users"
 
     user_manager_id: Mapped[int] = mapped_column(
-        ForeignKey("user_managers.id"), nullable=True
+        ForeignKey("user_managers.id"), nullable=False
     )
     manager: Mapped["UserManager"] = relationship(back_populates="banned_users")
 

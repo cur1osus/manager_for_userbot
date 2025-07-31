@@ -10,3 +10,15 @@ class UserState(StatesGroup):
     action = State()
 
 
+class InfoState(StatesGroup):
+    info = State()
+    chats_info = State()
+    add = State()
+    chats_add = State()
+    chats_delete = State()
+    delete = State()
+
+
+class BotState(StatesGroup):
+    main = State()
+    folders = State()

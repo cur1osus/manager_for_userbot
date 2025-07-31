@@ -32,7 +32,7 @@ path_to_folder = "sessions"
 async def cancel_reg(
     message: Message, redis: Redis, state: FSMContext, sessionmaker: async_sessionmaker
 ) -> None:
-    await state.clear()
+    await fn.state_clear(state)
     await message.answer("Добавление бота отменено", reply_markup=ReplyKeyboardRemove())
     msg = await message.answer("Главное меню", reply_markup=await ik_main_menu())
     await fn.set_general_message(state, msg)
@@ -136,7 +136,7 @@ async def process_enter_code(
         return
     elif r.message == "error":
         await message.answer("Ошибка при создании сессии", reply_markup=None)
-        await state.clear()
+        await fn.state_clear(state)
         return
 
     if data.get("save_bot", True):
@@ -157,6 +157,6 @@ async def process_enter_code(
 
     asyncio.create_task(start_bot(phone, path_to_folder))
     await message.answer("Бот подключен и запущен", reply_markup=ReplyKeyboardRemove())
-    await state.clear()
+    await fn.state_clear(state)
     msg = await message.answer("Главное меню", reply_markup=await ik_main_menu())
     await fn.set_general_message(state, msg)

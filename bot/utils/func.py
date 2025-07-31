@@ -31,7 +31,16 @@ class Function:
         await state.update_data(message_id=message.message_id)
 
     @staticmethod
-    async def _delete_keyboard(message_id_to_delete: int | None, message: Message) -> None:
+    async def state_clear(state: FSMContext) -> None:
+        data_state = await state.get_data()
+        message_id = data_state.get("message_id")
+        await state.clear()
+        await state.update_data(message_id=message_id)
+
+    @staticmethod
+    async def _delete_keyboard(
+        message_id_to_delete: int | None, message: Message
+    ) -> None:
         if message_id_to_delete:
             try:
                 await message.bot.edit_message_reply_markup(
@@ -39,8 +48,8 @@ class Function:
                     message_id=message_id_to_delete,
                     reply_markup=None,
                 )
-            except Exception as e:
-                logger.exception(f"Ошибка при удалении клавиатуры: {e}")
+            except Exception:
+                logger.exception("Ошибка при удалении клавиатуры")
 
     @staticmethod
     async def create_telethon_session(
@@ -93,7 +102,9 @@ class Function:
             return None
 
     @staticmethod
-    async def collapse_repeated_data(data: list[str], data_to_compare: list[str]) -> list[str]:
+    async def collapse_repeated_data(
+        data: list[str], data_to_compare: list[str]
+    ) -> list[str]:
         data_to_compare = list(set(data_to_compare))
         for i in data:
             if i in data_to_compare:
@@ -101,9 +112,13 @@ class Function:
         return data_to_compare
 
     @staticmethod
-    async def watch_data(data: list[str], sep: str, q_string_per_page: int, page: int) -> str:
+    async def watch_data(
+        data: list[str], sep: str, q_string_per_page: int, page: int
+    ) -> str:
         data_enumerate = list(enumerate(data))
-        data_ = data_enumerate[(page - 1) * q_string_per_page : page * q_string_per_page]
+        data_ = data_enumerate[
+            (page - 1) * q_string_per_page : page * q_string_per_page
+        ]
         s = "".join(f"{ind + 1}) {i}{sep}" for ind, i in data_)
         if len(s) > Function.max_length_message:
             return await Function.watch_data(data, sep, q_string_per_page - 1, page)
@@ -122,8 +137,12 @@ class Function:
         page: int,
     ) -> str:
         chats_enumerate = list(enumerate(chats))
-        chats_ = chats_enumerate[(page - 1) * q_string_per_page : page * q_string_per_page]
-        s = "".join(f"{ind + 1}) {i.chat_id} ({i.title or '🌀'}){sep}" for ind, i in chats_)
+        chats_ = chats_enumerate[
+            (page - 1) * q_string_per_page : page * q_string_per_page
+        ]
+        s = "".join(
+            f"{ind + 1}) {i.chat_id} ({i.title or '🌀'}){sep}" for ind, i in chats_
+        )
         if len(s) > Function.max_length_message:
             return await Function.watch_data_chats(
                 chats,
@@ -141,7 +160,9 @@ class Function:
         page: int,
         formatting: list[bool],
     ) -> str:
-        processed_users = processed_users[(page - 1) * q_string_per_page : page * q_string_per_page]
+        processed_users = processed_users[
+            (page - 1) * q_string_per_page : page * q_string_per_page
+        ]
         first_name, username, copy = formatting
         rows = []
         for i in processed_users:
@@ -163,7 +184,9 @@ class Function:
             rows.append(" - ".join(string))
         rows_str = "\n\n".join(rows)
         if len(rows_str) > Function.max_length_message:
-            return await Function.watch_processed_users(processed_users, sep, q_string_per_page - 1, page, formatting)
+            return await Function.watch_processed_users(
+                processed_users, sep, q_string_per_page - 1, page, formatting
+            )
         return Code(rows_str).as_html() if copy else rows_str
 
     @staticmethod

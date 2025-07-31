@@ -8,6 +8,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 
 from bot.db.mysql.models import UserManager
+from bot.utils import fn
 
 if TYPE_CHECKING:
     from aiogram.types import Message
@@ -25,5 +26,5 @@ async def start_cmd(
     user: UserManager | None,
     state: FSMContext,
 ) -> None:
-    await state.clear()
+    await fn.state_clear(state)
     await message.answer("Состояние сброшено")
