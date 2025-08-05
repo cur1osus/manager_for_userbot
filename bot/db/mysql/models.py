@@ -31,7 +31,7 @@ class Bot(Base):
     )
 
     name: Mapped[str] = mapped_column(String(50), nullable=True)
-    phone: Mapped[str] = mapped_column(String(50), unique=True)
+    phone: Mapped[str] = mapped_column(String(50))
     api_id: Mapped[int] = mapped_column(BigInteger, unique=True)
     api_hash: Mapped[str] = mapped_column(String(100))
     path_session: Mapped[str] = mapped_column(String(100))
