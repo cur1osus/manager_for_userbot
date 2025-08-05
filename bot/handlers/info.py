@@ -146,6 +146,7 @@ async def arrow_info(
             page = page - 1 if page > 1 else all_page
         case "right":
             page = page + 1 if page < all_page else 1
+    await state.update_data(current_page=page)
     try:
         data = await get_data_for_info(user, type_data)
         data_str, current_page, all_page = await data_info_to_string(

@@ -98,6 +98,7 @@ async def arrow_chats_info(
             page = page - 1 if page > 1 else all_page
         case "right":
             page = page + 1 if page < all_page else 1
+    await state.update_data(current_page=page)
     try:
         bot = await session.get(Bot, data_state["bot_id"])
         data = await bot.awaitable_attrs.chats
