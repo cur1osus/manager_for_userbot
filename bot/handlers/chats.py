@@ -102,7 +102,10 @@ async def arrow_chats_info(
     try:
         bot = await session.get(Bot, data_state["bot_id"])
         data = await bot.awaitable_attrs.chats
-        data_str, current_page, all_page = await data_info_to_string(data)
+        data_str, current_page, all_page = await data_info_to_string(
+            data,
+            current_page=page,
+        )
         await query.message.edit_text(
             text=data_str,
             reply_markup=await ik_add_or_delete(current_page, all_page),

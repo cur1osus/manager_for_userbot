@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 # Константы
 MAX_RETRIES = 3
 SLEEP_INTERVAL = 0.5
-USERS_PER_PAGE = 2
+USERS_PER_PAGE = 15
 
 
 async def _wait_for_job_completion(
