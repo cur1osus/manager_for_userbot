@@ -37,11 +37,30 @@ def _process_image_v():
         cv2.imwrite(path, img)
 
 
-def process_image_v():
-    vykupili_h, vykupili_w = vykupili.shape[:2]  # размеры оригинального изображения
+def process_image_v(scale=1.1):
+    """
+    Обрабатывает изображения: заменяет "ОТКАЗАЛИСЬ" на "ВЫКУПИЛИ" с масштабированием.
+
+    :param scale: коэффициент масштабирования для изображения "ВЫКУПИЛИ" (например, 1.0, 1.5, 0.8)
+    """
+    # Масштабируем изображение "ВЫКУПИЛИ"
+    h_orig, w_orig = vykupili.shape[:2]
+    new_w = int(w_orig * scale)
+    new_h = int(h_orig * scale)
+
+    # Изменяем размер "ВЫКУПИЛИ" с использованием интерполяции
+    if scale == 1.0:
+        resized_vykupili = vykupili.copy()
+    else:
+        interp = cv2.INTER_CUBIC if scale > 1.0 else cv2.INTER_AREA
+        resized_vykupili = cv2.resize(vykupili, (new_w, new_h), interpolation=interp)
 
     for img_path in glob.glob(os.path.join(input_folder, "*.[Pp][Nn][Gg]")):
         img = cv2.imread(img_path)
+        if img is None:
+            print(f"Не удалось загрузить изображение: {img_path}")
+            continue
+
         img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
         # Поиск "ОТКАЗАЛИСЬ"
@@ -49,33 +68,36 @@ def process_image_v():
         threshold = 0.8
         loc = np.where(res >= threshold)
 
-        for pt in zip(*loc[::-1]):  # pt = (x, y) — левый верхний угол совпадения
-            x, y = pt  # левый верхний угол "ОТКАЗАЛИСЬ"
-            h = oh  # высота шаблона "ОТКАЗАЛИСЬ"
+        for pt in zip(*loc[::-1]):  # pt = (x, y)
+            x, y = pt
+            h_template = oh  # высота шаблона "ОТКАЗАЛИСЬ"
 
             # --- Шаг 1: Закрашиваем область "ОТКАЗАЛИСЬ" белым ---
-            cv2.rectangle(img, (x, y), (x + ow, y + h), (255, 255, 255), -1)
+            cv2.rectangle(img, (x, y), (x + ow, y + h_template), (255, 255, 255), -1)
 
-            # --- Шаг 2: Вставляем "ВЫКУПИЛИ" по левому краю ---
-            # Горизонтально: начинаем с x (левый край)
+            # --- Шаг 2: Вставляем масштабированное "ВЫКУПИЛИ" по левому краю ---
+            # Левый край совпадает с x
             vx1 = x
-            vx2 = x + vykupili_w
+            vx2 = x + new_w
 
-            # Вертикально: центрируем по высоте "ОТКАЗАЛИСЬ"
-            vy1 = y + (h - vykupili_h) // 2  # центр по вертикали
-            vy2 = vy1 + vykupili_h
+            # Центрируем по вертикали
+            vy1 = y + (h_template - new_h) // 2
+            vy2 = vy1 + new_h
 
-            # Проверка на выход за границы изображения
-            if vx2 > img.shape[1] or vy2 > img.shape[0] or vy1 < 0:
-                print(f"Пропуск: 'ВЫКУПИЛИ' не помещается в {img_path}")
+            # Проверка границ изображения
+            if vx2 > img.shape[1] or vy2 > img.shape[0] or vx1 < 0 or vy1 < 0:
+                print(
+                    f"Пропуск: 'ВЫКУПИЛИ' не помещается в {img_path} при scale={scale}"
+                )
                 continue
 
-            # Вставляем оригинальное изображение "ВЫКУПИЛИ"
-            img[vy1:vy2, vx1:vx2] = vykupili
+            # Вставляем
+            img[vy1:vy2, vx1:vx2] = resized_vykupili
 
         # Сохраняем
         filename = os.path.basename(img_path)
-        cv2.imwrite(os.path.join(output_dir, filename), img)
+        output_path = os.path.join(output_dir, filename)
+        cv2.imwrite(output_path, img)
 
 
 def clear_dirs_v():
