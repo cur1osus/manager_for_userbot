@@ -56,6 +56,7 @@ async def do_end_cmd(
     state: FSMContext,
 ) -> None:
     await fn.state_clear(state)
+    await message.answer("Файлы начали обработку")
     process_image_d()
     path = "./result_images_d"
     for file in os.listdir(path):
