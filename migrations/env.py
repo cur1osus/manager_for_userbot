@@ -13,8 +13,6 @@ from bot.settings import Settings
 from bot.db.mysql.models import Base
 
 
-
-
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
@@ -29,7 +27,7 @@ target_metadata = Base.metadata
 st = Settings()
 
 
-config.set_main_option('sqlalchemy.url', st.mysql_dsn_string())
+config.set_main_option("sqlalchemy.url", st.mysql_dsn_string())
 
 
 def run_migrations_offline() -> None:

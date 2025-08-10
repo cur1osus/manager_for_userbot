@@ -16,3 +16,7 @@ test.py
 .env
 /.mypy_cache
 config.py
+result_images_d
+result_images_v
+images_d
+images_v

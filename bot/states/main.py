@@ -9,6 +9,9 @@ class UserState(StatesGroup):
     enter_password = State()
     action = State()
 
+    send_files = State()
+    send_files_do = State()
+
 
 class InfoState(StatesGroup):
     info = State()

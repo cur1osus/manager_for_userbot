@@ -1,49 +1,50 @@
-from pydantic import SecretStr
-from pydantic_settings import BaseSettings
 from redis.asyncio import Redis
 from sqlalchemy import URL
 from dotenv import load_dotenv
+import os
 
 load_dotenv()
 
 
-class MysqlSettings(BaseSettings):
-    db: str
-    password: str
-    username: str
-    host: str
+class RedisSettings:
+    def __init__(self) -> None:
+        self.host = os.environ.get("REDIS_HOST", "localhost")
+        self.port = int(os.environ.get("REDIS_PORT", 6379))
+        self.db = os.environ.get("REDIS_DB", 0)
 
 
-class RedisSettings(BaseSettings):
-    host: str
-    port: int
-    db: int
+class DBSettings:
+    def __init__(self, _env_prefix: str = "MYSQL_") -> None:
+        self.host = os.environ.get(f"{_env_prefix}HOST", "localhost")
+        self.port = os.environ.get(f"{_env_prefix}PORT", 3306)
+        self.db = os.environ.get(f"{_env_prefix}DB", "database")
+        self.username = os.environ.get(f"{_env_prefix}USERNAME", "user")
+        self.password = os.environ.get(f"{_env_prefix}PASSWORD", "password")
 
 
-class Settings(BaseSettings):
-    developer_id: int
-    dev: bool
-    bot_token: SecretStr
+class Settings:
+    bot_token = os.environ.get("BOT_TOKEN", "")
 
-    mysql: MysqlSettings = MysqlSettings(_env_prefix="MYSQL_")
-    redis: RedisSettings = RedisSettings(_env_prefix="REDIS_")
+    db: DBSettings = DBSettings()
+    redis: RedisSettings = RedisSettings()
+    developer_id = os.environ.get("DEVELOPER_ID", "")
 
     def mysql_dsn(self) -> URL:
         return URL.create(
             drivername="mysql+aiomysql",
-            database=self.mysql.db,
-            username=self.mysql.username,
-            password=self.mysql.password,
-            host=self.mysql.host,
+            database=self.db.db,
+            username=self.db.username,
+            password=self.db.password,
+            host=self.db.host,
         )
 
     def mysql_dsn_string(self) -> str:
         return URL.create(
             drivername="mysql+aiomysql",
-            database=self.mysql.db,
-            username=self.mysql.username,
-            password=self.mysql.password,
-            host=self.mysql.host,
+            database=self.db.db,
+            username=self.db.username,
+            password=self.db.password,
+            host=self.db.host,
         ).render_as_string(hide_password=False)
 
     async def redis_dsn(self) -> Redis:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sys
 from asyncio import CancelledError
 from functools import partial
 from typing import TYPE_CHECKING
@@ -17,12 +18,12 @@ from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.types import BotCommand
 
 from bot import errors, handlers
+from bot.background_jobs import job_sec
 from bot.db.mysql.base import close_db, create_db_session_pool, init_db
 from bot.middlewares.check_user_middleware import CheckUserMiddleware
 from bot.middlewares.db_session import DBSessionMiddleware
-from bot.settings import Settings
 from bot.scheduler import default_scheduler as scheduler
-from bot.background_jobs import job_sec
+from bot.settings import Settings
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -69,17 +70,20 @@ async def set_default_commands(bot: Bot) -> None:
             BotCommand(command="start", description="start"),
             BotCommand(command="reset", description="reset"),
             BotCommand(command="log", description="log"),
+            BotCommand(command="do", description="доставлен"),
+            BotCommand(command="vu", description="выкуплен"),
         ]
     )
 
 
 async def main() -> None:
+    # env_file = sys.argv[1] if len(sys.argv) > 1 else ".env"
     settings = Settings()
 
     api = PRODUCTION
 
     bot = Bot(
-        token=settings.bot_token.get_secret_value(),
+        token=settings.bot_token,
         session=AiohttpSession(api=api),
         default=DefaultBotProperties(parse_mode="HTML"),
     )
