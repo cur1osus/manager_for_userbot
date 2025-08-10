@@ -15,6 +15,7 @@ input_folder = "./images_d"
 output_dir = "./result_images_d"
 
 os.makedirs(output_dir, exist_ok=True)
+os.makedirs(input_folder, exist_ok=True)
 
 psm_modes = [6, 7, 8, 13]  # улучшенный набор
 _f = 2.5  # масштаб предобработки

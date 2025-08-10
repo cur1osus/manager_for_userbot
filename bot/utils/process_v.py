@@ -12,6 +12,7 @@ otkazalis_template = cv2.imread("./ot.png", cv2.IMREAD_GRAYSCALE)
 oh, ow = otkazalis_template.shape
 
 os.makedirs(output_dir, exist_ok=True)
+os.makedirs(input_folder, exist_ok=True)
 
 
 def _process_image_v():
