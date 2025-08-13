@@ -6,11 +6,13 @@ from typing import TYPE_CHECKING
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import FSInputFile
+from aiogram.types import FSInputFile, ReplyKeyboardRemove
+from bot.keyboards.inline import ik_main_menu
+from bot.keyboards.reply import rk_cancel
 from bot.states.main import UserState
 from bot.db.mysql.models import UserManager
 from bot.utils import fn
-from bot.utils.process_v import process_image_v, clear_dirs_v
+from bot.utils.process_v import process_image_v, clear_dirs_v, init_source_v, get_paths
 import os
 
 if TYPE_CHECKING:
@@ -28,10 +30,23 @@ async def vu_cmd(
     user: UserManager | None,
     state: FSMContext,
 ) -> None:
-    m = await message.answer("Жду файлы")
+    m = await message.answer("Жду файлы", reply_markup=await rk_cancel())
     await fn.set_general_message(state, m)
     await fn.state_clear(state)
     await state.set_state(UserState.send_files)
+
+
+@router.message(UserState.send_files, F.text == "Отмена")
+async def cancel(
+    message: Message,
+    redis: Redis,
+    user: UserManager | None,
+    state: FSMContext,
+) -> None:
+    await fn.state_clear(state)
+    await message.answer("Отменено", reply_markup=ReplyKeyboardRemove())
+    msg = await message.answer("Hello, world!", reply_markup=await ik_main_menu())
+    await fn.set_general_message(state, msg)
 
 
 @router.message(UserState.send_files, F.document)
@@ -56,7 +71,16 @@ async def vu_end_cmd(
     state: FSMContext,
 ) -> None:
     await fn.state_clear(state)
-    process_image_v()
+
+    resized_vykupili, new_h, new_w = init_source_v()
+
+    paths = get_paths()
+    len_paths = len(paths)
+    msg = await message.answer(f"Обработка [0/{len_paths}]")
+    for i, p in enumerate(paths, start=1):
+        process_image_v(resized_vykupili, new_h, new_w, p)
+        await msg.edit_text(f"Обработка [{i}/{len_paths}]")
+
     path = "./result_images_v"
     for file in os.listdir(path):
         await message.bot.send_document(
@@ -64,4 +88,4 @@ async def vu_end_cmd(
             document=FSInputFile(f"{path}/{file}"),
         )
     clear_dirs_v()
-    await message.answer("Файлы отправлены")
+    await message.answer("Файлы отправлены", reply_markup=ReplyKeyboardRemove())

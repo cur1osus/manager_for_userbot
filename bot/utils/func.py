@@ -48,8 +48,8 @@ class Function:
                     message_id=message_id_to_delete,
                     reply_markup=None,
                 )
-            except Exception:
-                logger.exception("Ошибка при удалении клавиатуры")
+            except:
+                pass
 
     @staticmethod
     async def create_telethon_session(

@@ -7,10 +7,19 @@ from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import FSInputFile
+from aiogram.types.reply_keyboard_remove import ReplyKeyboardRemove
+from bot.keyboards.inline import ik_main_menu
+from bot.keyboards.reply import rk_cancel
 from bot.states.main import UserState
 from bot.db.mysql.models import UserManager
 from bot.utils import fn
-from bot.utils.process_d import process_image_d, clear_dirs_d
+from bot.utils.process_d import (
+    process_image_d_v1,
+    clear_dirs_d,
+    get_paths,
+    process_image_d_vertical,
+    process_image_d_v2,
+)
 import os
 
 if TYPE_CHECKING:
@@ -28,10 +37,23 @@ async def do_cmd(
     user: UserManager | None,
     state: FSMContext,
 ) -> None:
-    m = await message.answer("Жду файлы")
+    m = await message.answer("Жду файлы", reply_markup=await rk_cancel())
     await fn.set_general_message(state, m)
     await fn.state_clear(state)
     await state.set_state(UserState.send_files_do)
+
+
+@router.message(UserState.send_files_do, F.text == "Отмена")
+async def cancel(
+    message: Message,
+    redis: Redis,
+    user: UserManager | None,
+    state: FSMContext,
+) -> None:
+    await fn.state_clear(state)
+    await message.answer("Отменено", reply_markup=ReplyKeyboardRemove())
+    msg = await message.answer("Hello, world!", reply_markup=await ik_main_menu())
+    await fn.set_general_message(state, msg)
 
 
 @router.message(UserState.send_files_do, F.document)
@@ -49,15 +71,34 @@ async def send_files_do(
 
 
 @router.message(UserState.send_files_do)
-async def do_end_cmd(
+async def do_end(
     message: Message,
     redis: Redis,
     user: UserManager | None,
     state: FSMContext,
 ) -> None:
     await fn.state_clear(state)
-    await message.answer("Файлы начали обработку")
-    process_image_d()
+
+    text = message.text
+    func = None
+
+    match text:
+        case "w":
+            func = process_image_d_v1
+        case "b":
+            func = process_image_d_v2
+        case "v":
+            func = process_image_d_vertical
+        case _:
+            func = process_image_d_v1
+
+    paths = get_paths()
+    len_paths = len(paths)
+    msg = await message.answer(f"Обработка [0/{len_paths}]")
+    for i, p in enumerate(paths, start=1):
+        func(p)
+        await msg.edit_text(f"Обработка [{i}/{len_paths}]")
+
     path = "./result_images_d"
     for file in os.listdir(path):
         await message.bot.send_document(
@@ -65,4 +106,4 @@ async def do_end_cmd(
             document=FSInputFile(f"{path}/{file}"),
         )
     clear_dirs_d()
-    await message.answer("Файлы отправлены")
+    await message.answer("Все файлы отправлены", reply_markup=ReplyKeyboardRemove())
