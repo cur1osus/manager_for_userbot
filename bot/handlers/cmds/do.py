@@ -1,26 +1,28 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import TYPE_CHECKING
 
-from aiogram import Router, F
+from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import FSInputFile
 from aiogram.types.reply_keyboard_remove import ReplyKeyboardRemove
+from aiogram.utils.media_group import MediaGroupBuilder
+
+from bot.db.mysql.models import UserManager
 from bot.keyboards.inline import ik_main_menu
 from bot.keyboards.reply import rk_cancel
 from bot.states.main import UserState
-from bot.db.mysql.models import UserManager
 from bot.utils import fn
 from bot.utils.process_d import (
-    process_image_d_v1,
     clear_dirs_d,
     get_paths,
-    process_image_d_vertical,
+    process_image_d_v1,
     process_image_d_v2,
+    process_image_d_vertical,
 )
-import os
 
 if TYPE_CHECKING:
     from aiogram.types import Message
@@ -100,10 +102,25 @@ async def do_end(
         await msg.edit_text(f"Обработка [{i}/{len_paths}]")
 
     path = "./result_images_d"
+
+    media_group = MediaGroupBuilder()
+    counter = 0
+
     for file in os.listdir(path):
-        await message.bot.send_document(
-            chat_id=message.chat.id,
-            document=FSInputFile(f"{path}/{file}"),
+        if counter < 10:
+            media_group.add_document(media=FSInputFile(f"{path}/{file}"))
+            counter += 1
+        else:
+            await message.bot.send_media_group(
+                chat_id=message.chat.id, media=media_group.build()
+            )
+            media_group = MediaGroupBuilder()
+            media_group.add_document(media=FSInputFile(f"{path}/{file}"))
+            counter = 1
+    if media_group._media:
+        await message.bot.send_media_group(
+            chat_id=message.chat.id, media=media_group.build()
         )
+
     clear_dirs_d()
     await message.answer("Все файлы отправлены", reply_markup=ReplyKeyboardRemove())

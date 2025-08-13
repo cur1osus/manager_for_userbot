@@ -7,6 +7,7 @@ from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import FSInputFile, ReplyKeyboardRemove
+from aiogram.utils.media_group import MediaGroupBuilder
 from bot.keyboards.inline import ik_main_menu
 from bot.keyboards.reply import rk_cancel
 from bot.states.main import UserState
@@ -82,10 +83,25 @@ async def vu_end_cmd(
         await msg.edit_text(f"Обработка [{i}/{len_paths}]")
 
     path = "./result_images_v"
+
+    media_group = MediaGroupBuilder()
+    counter = 0
+
     for file in os.listdir(path):
-        await message.bot.send_document(
-            chat_id=message.chat.id,
-            document=FSInputFile(f"{path}/{file}"),
+        if counter < 10:
+            media_group.add_document(media=FSInputFile(f"{path}/{file}"))
+            counter += 1
+        else:
+            await message.bot.send_media_group(
+                chat_id=message.chat.id, media=media_group.build()
+            )
+            media_group = MediaGroupBuilder()
+            media_group.add_document(media=FSInputFile(f"{path}/{file}"))
+            counter = 1
+    if media_group._media:
+        await message.bot.send_media_group(
+            chat_id=message.chat.id, media=media_group.build()
         )
+
     clear_dirs_v()
-    await message.answer("Файлы отправлены", reply_markup=ReplyKeyboardRemove())
+    await message.answer("Все файлы отправлены", reply_markup=ReplyKeyboardRemove())
