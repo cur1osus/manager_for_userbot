@@ -61,6 +61,7 @@ dependencies = [
   "opencv-python>=4.11.0.86",
   "pillow>=11.3.0",
   "pytesseract>=0.3.13",
+  "cachetools>=6.1.0",
 ]
 
 [tool.pyright]

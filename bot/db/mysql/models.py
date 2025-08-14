@@ -79,6 +79,8 @@ class UserAnalyzed(Base):
     chat_id: Mapped[str] = mapped_column(String(50), nullable=True)
     additional_message: Mapped[str] = mapped_column(String(1000))
     sended: Mapped[bool] = mapped_column(default=False)
+    accepted: Mapped[bool] = mapped_column(default=True)
+    decision: Mapped[int] = mapped_column(BLOB, nullable=True)
 
 
 class KeyWord(Base):

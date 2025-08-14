@@ -16,6 +16,7 @@ from aiogram.fsm.storage.base import DefaultKeyBuilder
 from aiogram.fsm.storage.memory import SimpleEventIsolation
 from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.types import BotCommand
+from sqlalchemy.orm.session import sessionmaker
 
 from bot import errors, handlers
 from bot.background_jobs import job_sec
@@ -23,10 +24,13 @@ from bot.db.mysql.base import close_db, create_db_session_pool, init_db
 from bot.middlewares.check_user_middleware import CheckUserMiddleware
 from bot.middlewares.db_session import DBSessionMiddleware
 from bot.scheduler import default_scheduler as scheduler
+from bot.scheduler import logger as scheduler_logger
 from bot.settings import Settings
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
+
+scheduler_logger.setLevel(logging.ERROR)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -49,6 +53,10 @@ async def startup(
     dispatcher.update.outer_middleware(DBSessionMiddleware(session_pool=db_session))
     dispatcher.update.outer_middleware(CheckUserMiddleware())
 
+    asyncio.create_task(
+        start_scheduler(sessionmaker=db_session, bot=bot)  # pyright: ignore
+    )
+
     logger.info("Bot started")
 
 
@@ -57,8 +65,10 @@ async def shutdown(dispatcher: Dispatcher) -> None:
     logger.info("Bot stopped")
 
 
-async def start_scheduler() -> None:
-    scheduler.every(1).seconds.do(job_sec)
+async def start_scheduler(sessionmaker: sessionmaker, bot: Bot) -> None:
+    if not sessionmaker:
+        return
+    scheduler.every(10).seconds.do(job_sec, sessionmaker=sessionmaker, bot=bot)
     while True:
         await scheduler.run_pending()
         await asyncio.sleep(1)
@@ -107,7 +117,7 @@ async def main() -> None:
     dp.startup.register(startup)
     dp.shutdown.register(shutdown)
     await set_default_commands(bot)
-    # asyncio.create_task(start_scheduler())
+
     # dp.workflow_data.update({"scheduler": scheduler})
 
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
