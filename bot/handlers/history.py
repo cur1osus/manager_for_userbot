@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
-from sqlalchemy import asc, func, select
+from sqlalchemy import and_, asc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.db.mysql.models import (
@@ -47,6 +47,12 @@ async def history(
     user_analyzed: list[UserAnalyzed] = (
         await session.scalars(
             select(UserAnalyzed)
+            .where(
+                and_(
+                    UserAnalyzed.sended.is_(True),
+                    UserAnalyzed.accepted.is_(True),
+                )
+            )
             .order_by(asc(UserAnalyzed.id))
             .slice(
                 (current_page - 1) * q_string_per_page,
@@ -57,8 +63,6 @@ async def history(
     t = ""
     for _user in user_analyzed:
         msg = _user.additional_message[:10].replace("\n", "")
-        if not _user.sended:
-            continue
         t += f"{_user.id}. {f'[{_user.bot_id}]' if _user.bot_id else ''} @{_user.username} {msg}...\n"
     if len(t) > fn.max_length_message:
         t = t[: fn.max_length_message - 4]
