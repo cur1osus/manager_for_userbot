@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
-from sqlalchemy import and_, asc, func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.db.mysql.models import (
@@ -36,7 +36,14 @@ async def history(
     session: AsyncSession,
     current_page: int | None = None,
 ) -> None:
-    len_data = await session.scalar(select(func.count(UserAnalyzed.id)))
+    len_data = await session.scalar(
+        select(func.count(UserAnalyzed.id)).where(
+            and_(
+                UserAnalyzed.accepted.is_(True),
+                UserAnalyzed.sended.is_(True),
+            )
+        )
+    )
     if not len_data:
         await query.message.edit_text(
             text="История пуста", reply_markup=await ik_back()
@@ -53,7 +60,7 @@ async def history(
                     UserAnalyzed.accepted.is_(True),
                 )
             )
-            .order_by(asc(UserAnalyzed.id))
+            .order_by(UserAnalyzed.id.asc())
             .slice(
                 (current_page - 1) * q_string_per_page,
                 current_page * q_string_per_page,
