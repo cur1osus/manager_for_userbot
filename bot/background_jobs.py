@@ -25,7 +25,7 @@ async def job_sec(sessionmaker: sessionmaker, bot: Bot):
         users = users.all()
 
     last_id = cache.get("last_id", None)
-    new_users = [user for user in users if user.id > last_id] if last_id else users
+    new_users = [user for user in users if user.id > last_id] if last_id else users[0]
 
     if not new_users:
         return
