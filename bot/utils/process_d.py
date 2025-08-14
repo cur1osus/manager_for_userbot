@@ -110,10 +110,12 @@ def process_image_d_v2(input_path: str):
 
                     # Цвет текста: БЕЛЫЙ на тёмном, ЧЁРНЫЙ на светлом
                     text_color = (0, 179, 89)
-
-                    time = datetime.datetime.strptime(text[9:], "%d%m%Y")
-                    time_str = time.strftime("%d.%m.%Y")
-                    text = text.replace(text[9:], time_str)
+                    try:
+                        time = datetime.datetime.strptime(text[9:], "%d%m%Y")
+                        time_str = time.strftime("%d.%m.%Y")
+                        text = text.replace(text[9:], time_str)
+                    except:
+                        pass
 
                     # Заменяем ТОЛЬКО целое слово
                     new_text = re.sub(
