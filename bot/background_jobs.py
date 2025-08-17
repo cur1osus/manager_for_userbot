@@ -45,3 +45,4 @@ async def job_sec(sessionmaker: sessionmaker, bot: Bot):
         t = await fn.short_view(user.id, d, raw_msg)
         await asyncio.sleep(1)
         await bot.send_message(474701274, text=t)
+        await bot.send_message(7856617208, text=t, disable_notification=True)
