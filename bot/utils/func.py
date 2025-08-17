@@ -33,10 +33,15 @@ class Function:
 
     @staticmethod
     async def state_clear(state: FSMContext) -> None:
+        new_data = {}
         data_state = await state.get_data()
-        message_id = data_state.get("message_id")
+        for key, value in data_state.items():
+            if key.startswith("rmsg_"):
+                new_data[key] = value
+            elif key == "message_id":
+                new_data[key] = value
         await state.clear()
-        await state.update_data(message_id=message_id)
+        await state.set_data(new_data)
 
     @staticmethod
     async def _delete_keyboard(
@@ -225,13 +230,16 @@ class Function:
 
         if r := d.get("banned"):
             message += f"Забанен: {r}\n\n"
-            threshold_view_message = 10
 
         if r := d.get("not_mention"):
             message += "Не нашел упоминания\n\n"
 
         if r := d.get("already_exist"):
             message += f"Уже существует в базе данных {r}\n\n"
+
+        if not d.get("triggers"):
+            message += "Не содержит триггеров\n\n"
+            return message
 
         message += f"{raw_message[:threshold_view_message]}...\n"
 
@@ -301,3 +309,11 @@ class Function:
             message = Function.replace_by_slice(message, x, y, f"<b>{m.group()}</b>")
             offset += len(t) - len(m.group())
         return message
+
+    @staticmethod
+    def get_id_from_message(message: str) -> int | None:
+        match = re.search(r"id\d+", message)
+        if match:
+            r = match.group()
+            return int(r[2:])
+        return None
