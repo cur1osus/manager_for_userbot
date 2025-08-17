@@ -11,6 +11,7 @@ from . import (
     info,
     reg_userbot,
     user_per_minute,
+    reaction,
 )
 
 router = Router()
@@ -26,4 +27,5 @@ router.include_routers(
     bot_actions.router,
     folders.router,
     back.router,
+    reaction.router,
 )

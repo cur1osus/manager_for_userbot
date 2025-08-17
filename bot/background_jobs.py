@@ -6,6 +6,7 @@ from aiogram import Bot
 from cachetools import TTLCache
 from sqlalchemy import select
 from sqlalchemy.orm.session import sessionmaker
+from bot.utils import fn
 import html
 
 from bot.db.mysql import UserAnalyzed
@@ -39,10 +40,8 @@ async def job_sec(sessionmaker: sessionmaker, bot: Bot):
 
     for user in new_users:
         user: UserAnalyzed
-        try:
-            text = msgpack.unpackb(user.decision)
-        except:
-            text = "не смог распаковать"
+        d: dict = msgpack.unpackb(user.decision)
+        raw_msg = user.additional_message
+        t = await fn.short_view(user.id, d, raw_msg)
         await asyncio.sleep(1)
-        await bot.send_message(chat_id=474701274, text=user.additional_message)
-        await bot.send_message(chat_id=474701274, text=html.escape(str(text)))
+        await bot.send_message(474701274, text=t)

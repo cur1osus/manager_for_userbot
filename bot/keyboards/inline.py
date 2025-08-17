@@ -240,3 +240,10 @@ async def ik_folders_with_users(
     builder.button(text="<-", callback_data=BackFactory(to=back_to))
     builder.adjust(2)
     return builder.as_markup()
+
+
+async def ik_tool_for_not_accepted_message() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="test", callback_data="test")
+    builder.adjust(1)
+    return builder.as_markup()

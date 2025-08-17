@@ -1,5 +1,6 @@
 import dataclasses
 import logging
+import re
 from typing import Any, Final
 
 from aiogram.fsm.context import FSMContext
@@ -216,3 +217,87 @@ class Function:
             return "Файл не найден"
         except Exception as e:
             return f"Ошибка при чтении файла: {e}"
+
+    @staticmethod
+    async def short_view(id_in_db: int, d: dict, raw_message: str):
+        message = f"id{id_in_db}\n\n"
+        threshold_view_message = 30
+
+        if r := d.get("banned"):
+            message += f"Забанен: {r}\n\n"
+            threshold_view_message = 10
+
+        if r := d.get("not_mention"):
+            message += "Не нашел упоминания\n\n"
+
+        if r := d.get("already_exist"):
+            message += f"Уже существует в базе данных {r}\n\n"
+
+        message += f"{raw_message[:threshold_view_message]}...\n"
+
+        return message
+
+    @staticmethod
+    async def long_view(id_in_db: int, d: dict, raw_message: str):
+        message = f"id{id_in_db}\n\n"
+
+        if r := d.get("banned"):
+            message += f"Забанен: {r}\n\n"
+
+        if r := d.get("not_mention"):
+            message += "Не нашел упоминания\n\n"
+
+        if r := d.get("already_exist"):
+            message += f"Уже существует в базе данных {r}\n\n"
+
+        if r := d.get("triggers"):
+            for trigger in r:
+                raw_message = Function.highlight_word(
+                    trigger, raw_message, save_original=True
+                )
+
+        if r := d.get("ignores"):
+            for ignore in r:
+                raw_message = Function.highlight_word(
+                    ignore, raw_message, save_original=True
+                )
+
+        message += f"{raw_message}\n"
+
+        return message
+
+    @staticmethod
+    def replace_by_slice(text, start, end, replacement):
+        """
+        Заменяет подстроку в тексте по индексам среза (start, end) на новую строку.
+
+        :param text: Исходная строка
+        :param start: Начальный индекс среза (включительно)
+        :param end: Конечный индекс среза (не включительно)
+        :param replacement: Строка, на которую нужно заменить
+        :return: Новая строка с заменой
+        """
+        if start < 0:
+            start = 0
+        if end > len(text):
+            end = len(text)
+        if start > end:
+            raise ValueError("Начальный индекс не может быть больше конечного")
+
+        return text[:start] + replacement + text[end:]
+
+    @staticmethod
+    def highlight_word(word: str, message: str, save_original=False) -> str:
+        if not save_original:
+            message = message.replace("\n", " ")
+        match = re.finditer(word, message, re.IGNORECASE)
+        offset = 0
+        for m in match:
+            x, y = m.span()
+            if offset:
+                x += offset
+                y += offset
+            t = f"<b>{m.group()}</b>"
+            message = Function.replace_by_slice(message, x, y, f"<b>{m.group()}</b>")
+            offset += len(t) - len(m.group())
+        return message
