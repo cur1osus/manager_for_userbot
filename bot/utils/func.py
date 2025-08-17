@@ -229,7 +229,8 @@ class Function:
         threshold_view_message = 30
 
         if r := d.get("banned"):
-            message += f"Забанен: {r}\n\n"
+            message += f"🔴 Забанен: {r}\n\n"
+            return message
 
         if r := d.get("not_mention"):
             message += "Не нашел упоминания\n\n"
@@ -238,7 +239,7 @@ class Function:
             message += f"Уже существует в базе данных {r}\n\n"
 
         if not d.get("triggers"):
-            message += "Не содержит триггеров\n\n"
+            message += "✳️ Не содержит триггеров\n\n"
             return message
 
         message += f"{raw_message[:threshold_view_message]}...\n"
@@ -250,7 +251,7 @@ class Function:
         message = f"id{id_in_db}\n\n"
 
         if r := d.get("banned"):
-            message += f"Забанен: {r}\n\n"
+            message += f"🔴 Забанен: {r}\n\n"
 
         if r := d.get("not_mention"):
             message += "Не нашел упоминания\n\n"
@@ -261,7 +262,7 @@ class Function:
         if r := d.get("triggers"):
             for trigger in r:
                 raw_message = Function.highlight_word(
-                    trigger, raw_message, save_original=True
+                    trigger, raw_message, save_original=True, tag="s"
                 )
 
         if r := d.get("ignores"):
@@ -295,7 +296,7 @@ class Function:
         return text[:start] + replacement + text[end:]
 
     @staticmethod
-    def highlight_word(word: str, message: str, save_original=False) -> str:
+    def highlight_word(word: str, message: str, save_original=False, tag="b") -> str:
         if not save_original:
             message = message.replace("\n", " ")
         match = re.finditer(word, message, re.IGNORECASE)
@@ -305,8 +306,10 @@ class Function:
             if offset:
                 x += offset
                 y += offset
-            t = f"<b>{m.group()}</b>"
-            message = Function.replace_by_slice(message, x, y, f"<b>{m.group()}</b>")
+            t = f"<{tag}>{m.group()}</{tag}>"
+            message = Function.replace_by_slice(
+                message, x, y, f"<{tag}>{m.group()}</{tag}>"
+            )
             offset += len(t) - len(m.group())
         return message
 
