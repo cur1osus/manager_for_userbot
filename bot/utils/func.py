@@ -262,7 +262,7 @@ class Function:
         if r := d.get("triggers"):
             for trigger in r:
                 raw_message = Function.highlight_word(
-                    trigger, raw_message, save_original=True, tag="s"
+                    trigger, raw_message, save_original=True, tag="u"
                 )
 
         if r := d.get("ignores"):
