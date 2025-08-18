@@ -41,6 +41,8 @@ async def job_sec(sessionmaker: sessionmaker, bot: Bot):
     for user in new_users:
         user: UserAnalyzed
         d: dict = msgpack.unpackb(user.decision)
+        if d.get("banned"):
+            continue
         raw_msg = user.additional_message
         t = await fn.short_view(user.id, d, raw_msg)
         await asyncio.sleep(1)
