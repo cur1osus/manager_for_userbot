@@ -244,7 +244,8 @@ async def ik_folders_with_users(
 
 async def ik_tool_for_not_accepted_message() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+    builder.button(text="🚷", callback_data="ban_user")
     builder.button(text="✍🏻", callback_data="send_message")
     builder.button(text="👁", callback_data="view_full_message")
-    builder.adjust(1)
+    builder.adjust(1, 2)
     return builder.as_markup()

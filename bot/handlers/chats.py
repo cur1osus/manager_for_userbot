@@ -232,7 +232,7 @@ async def back_chats(
     await state.update_data(data)
 
 
-@router.callback_query(InfoState.add, CancelFactory.filter(F.to == "default"))
+@router.callback_query(InfoState.chats_add, CancelFactory.filter(F.to == "default"))
 async def cancel_chats(
     query: CallbackQuery,
     state: FSMContext,

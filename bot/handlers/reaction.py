@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING, Final
 
@@ -9,7 +10,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, MessageReactionUpdated
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bot.db.mysql.models import UserAnalyzed
+from bot.db.mysql.models import BannedUser, UserAnalyzed, UserManager
 from bot.keyboards.inline import (
     ik_tool_for_not_accepted_message,
 )
@@ -71,11 +72,20 @@ async def catching_reaction(
         await state.set_data(data_state)
 
         return
-    await message.bot.edit_message_reply_markup(
-        chat_id=message.chat.id,
-        message_id=message.message_id,
-        reply_markup=await ik_tool_for_not_accepted_message(),
-    )
+
+    if message.new_reaction[0].emoji == "🤝":
+        try:
+            await message.bot.delete_message(message.chat.id, message.message_id)
+        except:
+            await message.bot.send_message(
+                message.chat.id, "Сообщение устарело и не может быть удалено"
+            )
+    else:
+        await message.bot.edit_message_reply_markup(
+            chat_id=message.chat.id,
+            message_id=message.message_id,
+            reply_markup=await ik_tool_for_not_accepted_message(),
+        )
 
 
 @router.callback_query(F.data == "view_full_message")
@@ -136,3 +146,41 @@ async def tool_send_message(
 
     await query.message.edit_text(t, reply_markup=None)
     await session.commit()
+
+
+@router.callback_query(F.data == "ban_user")
+async def tool_ban_user(
+    query: CallbackQuery,
+    user: UserManager,
+    state: FSMContext,
+    session: AsyncSession,
+) -> None:
+    t = query.message.text
+    if not t:
+        await query.answer("Не найдено сообщение", show_alert=True)
+        return
+    id_for_db = fn.get_id_from_message(t)
+    if not id_for_db:
+        await query.answer("Не найдено ID сообщения", show_alert=True)
+        return
+    user_a = await session.get(UserAnalyzed, id_for_db)
+    if not user_a:
+        await query.answer("Не найдена запись", show_alert=True)
+        return
+
+    banned_users = await user.awaitable_attrs.banned_users
+    data_to_add = await fn.collapse_repeated_data(
+        [i.username for i in banned_users],
+        [user_a.username],
+    )
+    banned_users.extend([BannedUser(username=i) for i in data_to_add])
+
+    await session.commit()
+    await query.message.edit_text(
+        f"Пользователь @<b>{user_a.username}</b> заблокирован"
+    )
+    await asyncio.sleep(1.5)
+    try:
+        await query.message.delete()
+    except:
+        await query.message.reply("Сообщение устарело и не может быть удалено")
