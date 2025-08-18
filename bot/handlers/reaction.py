@@ -73,7 +73,7 @@ async def catching_reaction(
 
         return
 
-    if message.new_reaction[0].emoji == "🤝":
+    if message.new_reaction[0].emoji == "🔥":
         try:
             await message.bot.delete_message(message.chat.id, message.message_id)
         except:
