@@ -10,7 +10,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, MessageReactionUpdated
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bot.db.mysql.models import BannedUser, UserAnalyzed, UserManager
+from bot.db.mysql import BannedUser, UserAnalyzed, UserManager, UserBot
 from bot.keyboards.inline import (
     ik_tool_for_not_accepted_message,
 )
@@ -59,7 +59,9 @@ async def catching_reaction(
 
         d: dict = msgpack.unpackb(user_a.decision)
         raw_msg = user_a.additional_message
-        t = await fn.short_view(user_a.id, d, raw_msg)
+
+        userbot: UserBot = await user_a.awaitable_attrs.bot
+        t = await fn.short_view(user_a.id, userbot.name, d, raw_msg)
 
         await message.bot.edit_message_text(
             text=t,

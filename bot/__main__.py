@@ -49,12 +49,15 @@ async def startup(
     dispatcher.workflow_data.update(
         {"sessionmaker": db_session, "db_session_closer": partial(close_db, engine)}
     )
-
     dispatcher.update.outer_middleware(DBSessionMiddleware(session_pool=db_session))
     dispatcher.update.outer_middleware(CheckUserMiddleware())
 
     asyncio.create_task(
-        start_scheduler(sessionmaker=db_session, bot=bot)  # pyright: ignore
+        start_scheduler(
+            sessionmaker=db_session,  # pyright: ignore
+            bot=bot,
+            redis=redis,
+        )
     )
 
     logger.info("Bot started")
@@ -65,10 +68,10 @@ async def shutdown(dispatcher: Dispatcher) -> None:
     logger.info("Bot stopped")
 
 
-async def start_scheduler(sessionmaker: sessionmaker, bot: Bot) -> None:
-    if not sessionmaker:
-        return
-    scheduler.every(10).seconds.do(job_sec, sessionmaker=sessionmaker, bot=bot)
+async def start_scheduler(sessionmaker: sessionmaker, bot: Bot, redis: Redis) -> None:
+    scheduler.every(10).seconds.do(
+        job_sec, sessionmaker=sessionmaker, bot=bot, redis=redis
+    )
     while True:
         await scheduler.run_pending()
         await asyncio.sleep(1)
@@ -87,7 +90,6 @@ async def set_default_commands(bot: Bot) -> None:
 
 
 async def main() -> None:
-    # env_file = sys.argv[1] if len(sys.argv) > 1 else ".env"
     settings = Settings()
 
     api = PRODUCTION
@@ -97,9 +99,9 @@ async def main() -> None:
         session=AiohttpSession(api=api),
         default=DefaultBotProperties(parse_mode="HTML"),
     )
-
+    redis = await settings.redis_dsn()
     storage = RedisStorage(
-        redis=await settings.redis_dsn(),
+        redis=redis,
         key_builder=DefaultKeyBuilder(with_bot_id=True, with_destiny=True),
         json_loads=msgspec.json.decode,
         json_dumps=partial(lambda obj: str(msgspec.json.encode(obj), encoding="utf-8")),

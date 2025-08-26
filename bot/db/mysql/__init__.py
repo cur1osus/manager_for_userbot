@@ -6,4 +6,5 @@ from .models import (
     IgnoredWord,
     KeyWord,
     UserManager,
+    Bot as UserBot,
 )

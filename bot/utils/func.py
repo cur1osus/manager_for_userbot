@@ -224,8 +224,8 @@ class Function:
             return f"Ошибка при чтении файла: {e}"
 
     @staticmethod
-    async def short_view(id_in_db: int, d: dict, raw_message: str):
-        message = f"id{id_in_db}\n\n"
+    async def short_view(id_in_db: int, userbot_name: str, d: dict, raw_message: str):
+        message = f"id{id_in_db} [{userbot_name}]\n\n"
         threshold_view_message = 30
 
         if r := d.get("banned"):
