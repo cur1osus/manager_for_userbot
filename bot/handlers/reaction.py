@@ -170,16 +170,17 @@ async def tool_ban_user(
         await query.answer("Не найдена запись", show_alert=True)
         return
 
+    username = f"@{user_a.username}"
     banned_users = await user.awaitable_attrs.banned_users
     data_to_add = await fn.collapse_repeated_data(
         [i.username for i in banned_users],
-        [user_a.username],
+        [username],
     )
     banned_users.extend([BannedUser(username=i) for i in data_to_add])
 
     await session.commit()
     await query.message.edit_text(
-        f"Пользователь @<b>{user_a.username}</b> заблокирован"
+        f"Пользователь <b>@{user_a.username}</b> заблокирован"
     )
     await asyncio.sleep(1.5)
     try:

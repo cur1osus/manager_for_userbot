@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import sys
 from asyncio import CancelledError
 from functools import partial
 from typing import TYPE_CHECKING
