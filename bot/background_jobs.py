@@ -3,12 +3,14 @@ import logging
 
 import msgpack
 from aiogram import Bot
+from redis.asyncio import Redis
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm.session import sessionmaker
 
 from bot.db.mysql import UserAnalyzed, UserBot, UserManager
+from bot.db.mysql.models import Job
 from bot.utils import fn
-from redis.asyncio import Redis
 
 logger = logging.getLogger(__name__)
 
@@ -71,3 +73,32 @@ async def job_sec(sessionmaker: sessionmaker, bot: Bot, redis: Redis):
             except:
                 pass
             await bot.send_message(474701274, text=t)
+
+
+async def handle_job(sessionmaker: async_sessionmaker[AsyncSession], bot: Bot):
+    async with sessionmaker() as session:
+        jobs = await session.scalars(select(Job).where(Job.answer.is_(None)))
+        jobs = jobs.all()
+
+        if not jobs:
+            return
+
+        for job in jobs:
+            match job.task:
+                case "delete_private_channel":
+                    channel = msgpack.unpackb(job.task_metadata)
+                    userbot = await session.get(UserBot, job.bot_id)
+                    if not userbot:
+                        logger.info(f"UserBot not found for job {job.id}")
+                    await bot.send_message(
+                        chat_id=userbot.manager.id_user,
+                        text=f"Удалите канал ({channel}), так как вы были в нем забанены или удалены, это затормаживает корректную работу бота",
+                    )
+                case "connection_error":
+                    userbot = await session.get(UserBot, job.bot_id)
+                    await bot.send_message(
+                        chat_id=userbot.manager.id_user,
+                        text=f"Ошибка подключения к серверу для бота {job.name}[{userbot.phone}]",
+                    )
+            job.answer = msgpack.packb(True)
+        await session.commit()

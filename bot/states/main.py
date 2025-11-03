@@ -18,8 +18,8 @@ class InfoState(StatesGroup):
     chats_info = State()
     add = State()
     chats_add = State()
-    chats_delete = State()
     delete = State()
+    chats_delete = State()
 
 
 class BotState(StatesGroup):
