@@ -1,15 +1,21 @@
-import cv2
-import re
-import os
-import numpy as np
-from PIL import Image, ImageDraw, ImageFont
-import pytesseract
-from glob import glob
 import datetime
-import time as t
 import logging
+import os
+import re
+from glob import glob
+from sys import platform
 
-pytesseract.pytesseract.tesseract_cmd = r"/usr/bin/tesseract"
+import cv2
+import pytesseract
+from PIL import Image, ImageDraw, ImageFont
+
+if platform == "linux" or platform == "linux2":
+    pytesseract.pytesseract.tesseract_cmd = r"/usr/bin/tesseract"
+elif platform == "win32":
+    tessdata_dir_config = '--tessdata-dir "C:/Program Files/Tesseract-OCR/tessdata"'
+    pytesseract.pytesseract.tesseract_cmd = (
+        r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+    )
 
 font_path = "hr.ttf"
 font_size = 46.5
@@ -94,7 +100,7 @@ def process_image_d_v2(input_path: str):
                     w = int(ocr_data["width"][i] / _f_v2)
                     h = int(ocr_data["height"][i] / _f_v2)
 
-                    fill_color = (0, 0, 0)
+                    fill_color = (24, 24, 27)
 
                     # 🔥 КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: РАСШИРЕННЫЙ БОКС
                     padding_horiz = 8
