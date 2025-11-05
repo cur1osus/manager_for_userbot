@@ -84,21 +84,28 @@ async def handle_job(sessionmaker: async_sessionmaker[AsyncSession], bot: Bot):
             return
 
         for job in jobs:
+            userbot = await session.get(UserBot, job.bot_id)
+            if not userbot:
+                logger.info(f"UserBot не найден по id {job.id}")
+                job.answer = msgpack.packb(True)
+                continue
             match job.task:
                 case "delete_private_channel":
                     channel = msgpack.unpackb(job.task_metadata)
-                    userbot = await session.get(UserBot, job.bot_id)
-                    if not userbot:
-                        logger.info(f"UserBot not found for job {job.id}")
                     await bot.send_message(
                         chat_id=userbot.manager.id_user,
                         text=f"Удалите канал ({channel}), так как вы были в нем забанены или удалены, это затормаживает корректную работу бота",
                     )
                 case "connection_error":
-                    userbot = await session.get(UserBot, job.bot_id)
                     await bot.send_message(
                         chat_id=userbot.manager.id_user,
                         text=f"Ошибка подключения к серверу для бота {job.name}[{userbot.phone}]",
+                    )
+                case "flood_wait_error":
+                    userbot.is_started = False
+                    await bot.send_message(
+                        chat_id=userbot.manager.id_user,
+                        text=f"Ошибка FloodWait для {job.name}[{userbot.phone}], бот был остановлен",
                     )
             job.answer = msgpack.packb(True)
         await session.commit()
