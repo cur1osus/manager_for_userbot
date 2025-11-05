@@ -107,7 +107,7 @@ async def handle_job(sessionmaker: async_sessionmaker[AsyncSession], bot: Bot):
                         userbot.is_started = False
                         await bot.send_message(
                             chat_id=manager.id_user,
-                            text=f"Ошибка FloodWait для {job.name}[{userbot.phone}], бот был остановлен",
+                            text=f"Ошибка FloodWait для {userbot.name}[{userbot.phone}], бот был остановлен",
                         )
             except Exception as e:
                 logger.error(f"Ошибка при обработке задания {job.id}: {e}")
