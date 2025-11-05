@@ -101,7 +101,7 @@ async def handle_job(sessionmaker: async_sessionmaker[AsyncSession], bot: Bot):
                     case "connection_error":
                         await bot.send_message(
                             chat_id=manager.id_user,
-                            text=f"Ошибка подключения к серверу для бота {job.name}[{userbot.phone}]",
+                            text=f"Ошибка подключения к серверу для бота {userbot.name}[{userbot.phone}]",
                         )
                     case "flood_wait_error":
                         userbot.is_started = False
