@@ -89,23 +89,27 @@ async def handle_job(sessionmaker: async_sessionmaker[AsyncSession], bot: Bot):
                 logger.info(f"UserBot не найден по id {job.id}")
                 job.answer = msgpack.packb(True)
                 continue
-            match job.task:
-                case "delete_private_channel":
-                    channel = msgpack.unpackb(job.task_metadata)
-                    await bot.send_message(
-                        chat_id=userbot.manager.id_user,
-                        text=f"Удалите канал ({channel}), так как вы были в нем забанены или удалены, это затормаживает корректную работу бота",
-                    )
-                case "connection_error":
-                    await bot.send_message(
-                        chat_id=userbot.manager.id_user,
-                        text=f"Ошибка подключения к серверу для бота {job.name}[{userbot.phone}]",
-                    )
-                case "flood_wait_error":
-                    userbot.is_started = False
-                    await bot.send_message(
-                        chat_id=userbot.manager.id_user,
-                        text=f"Ошибка FloodWait для {job.name}[{userbot.phone}], бот был остановлен",
-                    )
+            try:
+                match job.task:
+                    case "delete_private_channel":
+                        channel = msgpack.unpackb(job.task_metadata)
+                        await bot.send_message(
+                            chat_id=userbot.manager.id_user,
+                            text=f"Удалите канал ({channel}), так как вы были в нем забанены или удалены, это затормаживает корректную работу бота",
+                        )
+                    case "connection_error":
+                        manager = await userbot.awaitable_attrs.manager
+                        await bot.send_message(
+                            chat_id=manager.id_user,
+                            text=f"Ошибка подключения к серверу для бота {job.name}[{userbot.phone}]",
+                        )
+                    case "flood_wait_error":
+                        userbot.is_started = False
+                        await bot.send_message(
+                            chat_id=userbot.manager.id_user,
+                            text=f"Ошибка FloodWait для {job.name}[{userbot.phone}], бот был остановлен",
+                        )
+            except Exception as e:
+                logger.error(f"Ошибка при обработке задания {job.id}: {e}")
             job.answer = msgpack.packb(True)
         await session.commit()
