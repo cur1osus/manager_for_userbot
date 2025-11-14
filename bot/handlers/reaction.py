@@ -10,7 +10,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, MessageReactionUpdated
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bot.db.mysql import BannedUser, UserAnalyzed, UserManager, UserBot
+from bot.db.mysql import BannedUser, UserAnalyzed, UserBot, UserManager
 from bot.keyboards.inline import (
     ik_tool_for_not_accepted_message,
 )
@@ -87,6 +87,17 @@ async def catching_reaction(
             chat_id=message.chat.id,
             message_id=message.message_id,
             reply_markup=await ik_tool_for_not_accepted_message(),
+        )
+
+
+@router.callback_query(F.data == "in_the_trash")
+async def in_the_trash(query: CallbackQuery) -> None:
+    try:
+        await query.message.delete()
+    except Exception:
+        await query.answer(
+            text="Сообщение устарело и не может быть удалено",
+            show_alert=True,
         )
 
 
