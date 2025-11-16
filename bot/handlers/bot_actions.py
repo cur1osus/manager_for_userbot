@@ -6,18 +6,20 @@ from typing import TYPE_CHECKING
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.db.mysql.models import (
     Bot,
+    Job,
     UserManager,
 )
 from bot.keyboards.factories import BackFactory, BotFactory
 from bot.keyboards.inline import (
     ik_action_with_bot,
     ik_available_bots,
-    ik_main_menu,
     ik_connect_bot,
+    ik_main_menu,
 )
 from bot.states import UserState
 from bot.states.main import BotState
@@ -92,7 +94,8 @@ async def connect_bot(
         path_session=bot.path_session,
         save_bot=False,
     )
-
+    await session.execute(delete(Job).where(Job.bot_id == bot.id))
+    await session.commit()
     await query.message.edit_text("Введите code", reply_markup=None)
 
 
@@ -153,6 +156,7 @@ async def disconnected_bot(
     bot.is_connected = False
     bot.is_started = False
     await delete_bot(phone=bot.phone, path_to_folder=path_to_folder)
+    await session.execute(delete(Job).where(Job.bot_id == bot.id))
     await session.commit()
     await query.message.edit_text("Бот отключен", reply_markup=await ik_main_menu())
 
