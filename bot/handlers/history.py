@@ -71,7 +71,7 @@ async def history(
     start_for_index = ((current_page - 1) * q_string_per_page) + 1
     for index, _user in enumerate(user_analyzed, start=start_for_index):
         msg = _user.additional_message[:10].replace("\n", "")
-        t += f"{index}. {f'[{_user.bot_id}]' if _user.bot_id else ''} @{_user.username} {msg}...\n"
+        t += f"{index}. {f'[{_user.bot_id}]' if _user.bot_id else ''} {_user.username} {msg}...\n"
     if len(t) > fn.max_length_message:
         t = t[: fn.max_length_message - 4]
         t += "..."
