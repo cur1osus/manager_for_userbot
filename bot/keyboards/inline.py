@@ -258,6 +258,6 @@ async def ik_tool_for_not_accepted_message() -> InlineKeyboardMarkup:
 
 async def ik_tool_for_pack_users() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text="✍🏻", callback_data="send_message")
+    builder.button(text="✍🏻", callback_data="send_messages")
     builder.adjust(1)
     return builder.as_markup()
