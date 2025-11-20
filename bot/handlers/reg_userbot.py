@@ -30,7 +30,11 @@ path_to_folder = "sessions"
 
 @router.message(any_state, F.text == "Отмена")
 async def cancel_reg(
-    message: Message, redis: Redis, state: FSMContext, sessionmaker: async_sessionmaker
+    message: Message,
+    redis: Redis,
+    state: FSMContext,
+    sessionmaker: async_sessionmaker,
+    user: UserManager,
 ) -> None:
     await fn.state_clear(state)
     await message.answer("Добавление бота отменено", reply_markup=ReplyKeyboardRemove())

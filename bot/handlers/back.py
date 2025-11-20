@@ -7,6 +7,7 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
 
+from bot.db.mysql.models import UserManager
 from bot.keyboards.factories import BackFactory
 from bot.keyboards.inline import (
     ik_main_menu,
@@ -24,6 +25,7 @@ logger = logging.getLogger(__name__)
 async def back_default(
     query: CallbackQuery,
     state: FSMContext,
+    user: UserManager,
 ) -> None:
     await fn.state_clear(state)
     await query.message.edit_text("Главное меню", reply_markup=await ik_main_menu(user))

@@ -28,6 +28,7 @@ async def start_cmd_with_deep_link(
     command: CommandObject,
     session: AsyncSession,
     state: FSMContext,
+    user: UserManager,
 ) -> None:
     args = command.args.split() if command.args else []
     deep_link = args[0]
