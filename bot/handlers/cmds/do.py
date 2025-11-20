@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 async def do_cmd(
     message: Message,
     redis: Redis,
-    user: UserManager | None,
+    user: UserManager,
     state: FSMContext,
 ) -> None:
     m = await message.answer("Жду файлы", reply_markup=await rk_cancel())
@@ -49,12 +49,12 @@ async def do_cmd(
 async def cancel(
     message: Message,
     redis: Redis,
-    user: UserManager | None,
+    user: UserManager,
     state: FSMContext,
 ) -> None:
     await fn.state_clear(state)
     await message.answer("Отменено", reply_markup=ReplyKeyboardRemove())
-    msg = await message.answer("Hello, world!", reply_markup=await ik_main_menu())
+    msg = await message.answer("Hello, world!", reply_markup=await ik_main_menu(user))
     await fn.set_general_message(state, msg)
 
 
@@ -62,7 +62,7 @@ async def cancel(
 async def send_files_do(
     message: Message,
     redis: Redis,
-    user: UserManager | None,
+    user: UserManager,
     state: FSMContext,
 ) -> None:
     await message.bot.download(
@@ -76,7 +76,7 @@ async def send_files_do(
 async def do_end(
     message: Message,
     redis: Redis,
-    user: UserManager | None,
+    user: UserManager,
     state: FSMContext,
 ) -> None:
     await fn.state_clear(state)

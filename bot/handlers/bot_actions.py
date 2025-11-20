@@ -158,7 +158,7 @@ async def disconnected_bot(
     await delete_bot(phone=bot.phone, path_to_folder=path_to_folder)
     await session.execute(delete(Job).where(Job.bot_id == bot.id))
     await session.commit()
-    await query.message.edit_text("Бот отключен", reply_markup=await ik_main_menu())
+    await query.message.edit_text("Бот отключен", reply_markup=await ik_main_menu(user))
 
 
 @router.callback_query(BotState.main, F.data == "delete")
@@ -181,7 +181,7 @@ async def delete_bot_from_list(
     await delete_bot(phone=bot.phone, path_to_folder=path_to_folder)
     await session.commit()
     await fn.state_clear(state)
-    await query.message.edit_text("Бот удален", reply_markup=await ik_main_menu())
+    await query.message.edit_text("Бот удален", reply_markup=await ik_main_menu(user))
 
 
 @router.callback_query(BotState.main, BackFactory.filter(F.to == "bots"))

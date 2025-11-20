@@ -7,12 +7,12 @@ from typing import TYPE_CHECKING
 from aiogram import Router
 from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
+from aiogram.utils.formatting import Code
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from bot.db.mysql.models import Bot, UserManager
 from bot.states import UserState
 from bot.utils import fn
-from aiogram.utils.formatting import Code
 
 if TYPE_CHECKING:
     from aiogram.types import Message
@@ -27,7 +27,7 @@ path_to_folder = "sessions"
 async def start_cmd_state(
     message: Message,
     redis: Redis,
-    user: UserManager | None,
+    user: UserManager,
     state: FSMContext,
     command: CommandObject,
     sessionmaker: async_sessionmaker,
@@ -41,7 +41,9 @@ async def start_cmd_state(
         phone = bot.phone
     path_log = os.path.join("sessions", f"{phone}_bot.log")
     args = command.args.split(" ") if command.args else []
-    line_count = int(args[0]) if len(args) > 0 and args[0].isdigit() and len(args) < 2 else 20
+    line_count = (
+        int(args[0]) if len(args) > 0 and args[0].isdigit() and len(args) < 2 else 20
+    )
     r = fn.get_log(path_log, line_count)
     if isinstance(r, str):
         await message.answer(r)
@@ -57,12 +59,14 @@ async def start_cmd_state(
 async def start_cmd(
     message: Message,
     redis: Redis,
-    user: UserManager | None,
+    user: UserManager,
     state: FSMContext,
     command: CommandObject,
 ) -> None:
     args = command.args.split(" ") if command.args else []
-    line_count = int(args[0]) if len(args) > 0 and args[0].isdigit() and len(args) < 2 else 20
+    line_count = (
+        int(args[0]) if len(args) > 0 and args[0].isdigit() and len(args) < 2 else 20
+    )
     r = fn.get_log("nohup.out", line_count)
     if isinstance(r, str):
         await message.answer(r)

@@ -4,7 +4,7 @@ from typing import Final
 from aiogram.types import InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from bot.db.mysql.models import Bot
+from bot.db.mysql.models import Bot, UserManager
 
 from .factories import (
     ArrowFoldersFactory,
@@ -24,16 +24,20 @@ from .factories import (
 logger = logging.getLogger(__name__)
 
 
-async def ik_main_menu() -> InlineKeyboardMarkup:
+async def ik_main_menu(user: UserManager) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text="👥 Боты", callback_data="bots")
+    builder.button(text=f"👥 Боты [{len(user.bots)}]", callback_data="bots")
     builder.button(text="❇️ Добавить бота", callback_data="add_new_bot")
     builder.button(text="❌ Игноры", callback_data=InfoFactory(key="ignore"))
     builder.button(text="🚷 Баны", callback_data=InfoFactory(key="ban"))
     builder.button(text="❗️Тригеры", callback_data=InfoFactory(key="keyword"))
     builder.button(text="🗣 Ответы", callback_data=InfoFactory(key="answer"))
     builder.button(
-        text="🏃🏼‍➡️ Пропускная способность",
+        text=f"🤖 Антифлуд: {'🟢' if user.is_antiflood_mode else '🔴'}",
+        callback_data="antiflood_mode",
+    )
+    builder.button(
+        text=f"🏃🏼‍➡️ Пропускная способность: {user.users_per_minute}",
         callback_data="users_per_minute",
     )
     builder.button(text="🔍 История", callback_data="history")
@@ -249,4 +253,11 @@ async def ik_tool_for_not_accepted_message() -> InlineKeyboardMarkup:
     builder.button(text="✍🏻", callback_data="send_message")
     builder.button(text="👁", callback_data="view_full_message")
     builder.adjust(2, 2)
+    return builder.as_markup()
+
+
+async def ik_tool_for_pack_users() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="✍🏻", callback_data="send_message")
+    builder.adjust(1)
     return builder.as_markup()

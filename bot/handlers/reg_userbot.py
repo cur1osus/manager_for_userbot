@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from typing import TYPE_CHECKING
@@ -17,7 +18,6 @@ from bot.keyboards.reply import rk_cancel
 from bot.states import UserState
 from bot.utils import fn
 from bot.utils.manager import start_bot
-import asyncio
 
 if TYPE_CHECKING:
     from aiogram.types import Message
@@ -34,7 +34,7 @@ async def cancel_reg(
 ) -> None:
     await fn.state_clear(state)
     await message.answer("Добавление бота отменено", reply_markup=ReplyKeyboardRemove())
-    msg = await message.answer("Главное меню", reply_markup=await ik_main_menu())
+    msg = await message.answer("Главное меню", reply_markup=await ik_main_menu(user))
     await fn.set_general_message(state, msg)
 
 
@@ -158,5 +158,5 @@ async def process_enter_code(
     asyncio.create_task(start_bot(phone, path_to_folder))
     await message.answer("Бот подключен и запущен", reply_markup=ReplyKeyboardRemove())
     await fn.state_clear(state)
-    msg = await message.answer("Главное меню", reply_markup=await ik_main_menu())
+    msg = await message.answer("Главное меню", reply_markup=await ik_main_menu(user))
     await fn.set_general_message(state, msg)

@@ -15,20 +15,20 @@ from bot.db.mysql.models import (
     MessageToAnswer,
     UserManager,
 )
-from bot.states.main import InfoState
-from bot.keyboards.inline import (
-    ik_add_or_delete,
-    ik_cancel_action,
-    ik_num_matrix_del,
-    ik_main_menu,
-)
 from bot.keyboards.factories import (
+    ArrowInfoFactory,
+    BackFactory,
     CancelFactory,
     DeleteInfoFactory,
     InfoFactory,
-    ArrowInfoFactory,
-    BackFactory,
 )
+from bot.keyboards.inline import (
+    ik_add_or_delete,
+    ik_cancel_action,
+    ik_main_menu,
+    ik_num_matrix_del,
+)
+from bot.states.main import InfoState
 from bot.utils import fn
 from config import sep
 
@@ -312,7 +312,7 @@ async def back(
     state: FSMContext,
 ) -> None:
     await fn.state_clear(state)
-    await query.message.edit_text("Главное меню", reply_markup=await ik_main_menu())
+    await query.message.edit_text("Главное меню", reply_markup=await ik_main_menu(user))
 
 
 @router.callback_query(InfoState.add, CancelFactory.filter(F.to == "default"))

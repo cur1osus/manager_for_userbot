@@ -26,4 +26,4 @@ async def back_default(
     state: FSMContext,
 ) -> None:
     await fn.state_clear(state)
-    await query.message.edit_text("Главное меню", reply_markup=await ik_main_menu())
+    await query.message.edit_text("Главное меню", reply_markup=await ik_main_menu(user))

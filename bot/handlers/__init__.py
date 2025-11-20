@@ -1,6 +1,7 @@
 from aiogram import Router
 
 from . import (
+    antiflood_mode,
     back,
     bot_actions,
     bots,
@@ -9,9 +10,9 @@ from . import (
     folders,
     history,
     info,
+    reaction,
     reg_userbot,
     user_per_minute,
-    reaction,
 )
 
 router = Router()
@@ -24,6 +25,7 @@ router.include_routers(
     info.router,
     history.router,
     user_per_minute.router,
+    antiflood_mode.router,
     bot_actions.router,
     folders.router,
     back.router,

@@ -1,20 +1,21 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import TYPE_CHECKING
 
-from aiogram import Router, F
+from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import FSInputFile, ReplyKeyboardRemove
 from aiogram.utils.media_group import MediaGroupBuilder
+
+from bot.db.mysql.models import UserManager
 from bot.keyboards.inline import ik_main_menu
 from bot.keyboards.reply import rk_cancel
 from bot.states.main import UserState
-from bot.db.mysql.models import UserManager
 from bot.utils import fn
-from bot.utils.process_v import process_image_v, clear_dirs_v, init_source_v, get_paths
-import os
+from bot.utils.process_v import clear_dirs_v, get_paths, init_source_v, process_image_v
 
 if TYPE_CHECKING:
     from aiogram.types import Message
@@ -28,7 +29,7 @@ logger = logging.getLogger(__name__)
 async def vu_cmd(
     message: Message,
     redis: Redis,
-    user: UserManager | None,
+    user: UserManager,
     state: FSMContext,
 ) -> None:
     m = await message.answer("Жду файлы", reply_markup=await rk_cancel())
@@ -41,12 +42,12 @@ async def vu_cmd(
 async def cancel(
     message: Message,
     redis: Redis,
-    user: UserManager | None,
+    user: UserManager,
     state: FSMContext,
 ) -> None:
     await fn.state_clear(state)
     await message.answer("Отменено", reply_markup=ReplyKeyboardRemove())
-    msg = await message.answer("Hello, world!", reply_markup=await ik_main_menu())
+    msg = await message.answer("Hello, world!", reply_markup=await ik_main_menu(user))
     await fn.set_general_message(state, msg)
 
 
@@ -54,7 +55,7 @@ async def cancel(
 async def send_files(
     message: Message,
     redis: Redis,
-    user: UserManager | None,
+    user: UserManager,
     state: FSMContext,
 ) -> None:
     await message.bot.download(
@@ -68,7 +69,7 @@ async def send_files(
 async def vu_end_cmd(
     message: Message,
     redis: Redis,
-    user: UserManager | None,
+    user: UserManager,
     state: FSMContext,
 ) -> None:
     await fn.state_clear(state)

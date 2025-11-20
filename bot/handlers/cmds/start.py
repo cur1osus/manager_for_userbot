@@ -38,7 +38,9 @@ async def start_cmd_with_deep_link(
         )
         session.add(user_manager)
         await session.commit()
-        msg = await message.answer("Hello, world!", reply_markup=await ik_main_menu())
+        msg = await message.answer(
+            "Hello, world!", reply_markup=await ik_main_menu(user)
+        )
         await fn.set_general_message(state, msg)
 
 
@@ -46,7 +48,7 @@ async def start_cmd_with_deep_link(
 async def start_cmd(
     message: Message,
     redis: Redis,
-    user: UserManager | None,
+    user: UserManager,
     state: FSMContext,
 ) -> None:
     if user is None and message.from_user:
@@ -54,5 +56,5 @@ async def start_cmd(
         username = message.from_user.username or "none"
         logger.warning(f"Незнакомец пытается получить доступ {full_name} @{username}")
         return
-    msg = await message.answer("Hello, world!", reply_markup=await ik_main_menu())
+    msg = await message.answer("Hello, world!", reply_markup=await ik_main_menu(user))
     await fn.set_general_message(state, msg)

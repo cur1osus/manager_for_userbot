@@ -10,6 +10,7 @@ from sqlalchemy.orm.session import sessionmaker
 
 from bot.db.mysql import UserAnalyzed, UserBot, UserManager
 from bot.db.mysql.models import Job
+from bot.keyboards.inline import ik_tool_for_pack_users
 from bot.utils import fn
 
 logger = logging.getLogger(__name__)
@@ -92,6 +93,13 @@ async def handle_job(sessionmaker: async_sessionmaker[AsyncSession], bot: Bot):
             manager = await userbot.awaitable_attrs.manager
             try:
                 match job.task:
+                    case "send_pack_users":
+                        users = msgpack.unpackb(job.task_metadata)
+                        await bot.send_message(
+                            chat_id=manager.id_user,
+                            text=f"PACK_USERS\n\n{users}",
+                            reply_markup=await ik_tool_for_pack_users(),
+                        )
                     case "delete_private_channel":
                         channel = msgpack.unpackb(job.task_metadata)
                         await bot.send_message(

@@ -23,7 +23,7 @@ path_to_folder = "sessions"
 async def start_cmd(
     message: Message,
     redis: Redis,
-    user: UserManager | None,
+    user: UserManager,
     state: FSMContext,
 ) -> None:
     await fn.state_clear(state)
