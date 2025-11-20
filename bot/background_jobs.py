@@ -66,14 +66,15 @@ async def job_sec(sessionmaker: sessionmaker, bot: Bot, redis: Redis):
 
             await asyncio.sleep(1)
             try:
-                await bot.send_message(
-                    manager.id_user,
-                    text=t,
-                    disable_notification=True,
-                )
+                if not manager.is_antiflood_mode:
+                    await bot.send_message(
+                        manager.id_user,
+                        text=t,
+                        disable_notification=True,
+                    )
             except:
                 pass
-            await bot.send_message(474701274, text=t)
+            # await bot.send_message(474701274, text=t)
 
 
 async def handle_job(sessionmaker: async_sessionmaker[AsyncSession], bot: Bot):
