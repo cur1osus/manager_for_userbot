@@ -95,10 +95,10 @@ async def handle_job(sessionmaker: async_sessionmaker[AsyncSession], bot: Bot):
             try:
                 match job.task:
                     case "send_pack_users":
-                        users = msgpack.unpackb(job.task_metadata)
+                        t = msgpack.unpackb(job.task_metadata)
                         await bot.send_message(
                             chat_id=manager.id_user,
-                            text=f"PACK_USERS\n\n{users}",
+                            text=f"PACK_USERS\n\n{t}",
                             reply_markup=await ik_tool_for_pack_users(),
                         )
                     case "delete_private_channel":
