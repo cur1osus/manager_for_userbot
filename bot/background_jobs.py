@@ -160,10 +160,10 @@ async def antiflood_pack_users(
         if not pack_users or len(pack_users) < user_manager.limit_pack:
             return
 
-        t = f"Пак от {active_bot.name}[{active_bot.phone}]\n\n{'\n\n'.join(user.username for user in pack_users)}"
+        t = f"Пак от {active_bot.name}[{active_bot.phone}]\n\n{'\n\n'.join(f'<code>{user.additional_message[:10].replace("\n", "")}</code> - {user.username}' for user in pack_users)}"
         await bot.send_message(
             chat_id=user_manager.id_user,
-            text=f"<code>{t}</code>",
+            text=t,
             reply_markup=await ik_tool_for_pack_users(),
         )
         await redis.set(last_pack_key, pack_users[-1].id)
