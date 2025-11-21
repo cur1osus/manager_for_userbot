@@ -18,7 +18,11 @@ from aiogram.types import BotCommand
 from sqlalchemy.orm.session import sessionmaker
 
 from bot import errors, handlers
-from bot.background_jobs import handle_job, job_sec
+from bot.background_jobs import (
+    antiflood_pack_users,
+    handle_job_from_userbot,
+    send_not_accepted_posts,
+)
 from bot.db.mysql.base import close_db, create_db_session_pool, init_db
 from bot.middlewares.check_user_middleware import CheckUserMiddleware
 from bot.middlewares.db_session import DBSessionMiddleware
@@ -68,13 +72,22 @@ async def shutdown(dispatcher: Dispatcher) -> None:
 
 
 async def start_scheduler(sessionmaker: sessionmaker, bot: Bot, redis: Redis) -> None:
+    scheduler.every(15).seconds.do(
+        antiflood_pack_users,
+        sessionmaker=sessionmaker,
+        bot=bot,
+    )
     scheduler.every(10).seconds.do(
-        job_sec,
+        send_not_accepted_posts,
         sessionmaker=sessionmaker,
         bot=bot,
         redis=redis,
     )
-    scheduler.every(10).seconds.do(handle_job, sessionmaker=sessionmaker, bot=bot)
+    scheduler.every(5).seconds.do(
+        handle_job_from_userbot,
+        sessionmaker=sessionmaker,
+        bot=bot,
+    )
     while True:
         await scheduler.run_pending()
         await asyncio.sleep(1)

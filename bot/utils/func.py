@@ -6,10 +6,12 @@ from typing import Any, Final
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 from aiogram.utils.formatting import Code
+from sqlalchemy import and_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from telethon import TelegramClient  # type: ignore
 from telethon.errors import SessionPasswordNeededError  # type: ignore
 
-from bot.db.mysql.models import MonitoringChat
+from bot.db.mysql.models import MonitoringChat, UserAnalyzed
 
 
 @dataclasses.dataclass
@@ -23,6 +25,27 @@ logger = logging.getLogger(__name__)
 
 class Function:
     max_length_message: Final[int] = 4000
+
+    @staticmethod
+    async def get_closer_data_users(
+        session: AsyncSession,
+        bot_id: int,
+        limit: int = 30,
+    ) -> list[UserAnalyzed]:
+        users = await session.scalars(
+            select(UserAnalyzed)
+            .where(
+                and_(
+                    UserAnalyzed.accepted.is_(True),
+                    UserAnalyzed.sended.is_(False),
+                    UserAnalyzed.bot_id == bot_id,
+                )
+            )
+            .order_by(UserAnalyzed.id.asc())
+            .limit(limit),
+        )
+
+        return list(users.all())
 
     @staticmethod
     async def set_general_message(state: FSMContext, message: Message) -> None:

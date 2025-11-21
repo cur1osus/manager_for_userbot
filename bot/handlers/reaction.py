@@ -11,7 +11,6 @@ from aiogram.types import CallbackQuery, MessageReactionUpdated
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.db.mysql import BannedUser, UserAnalyzed, UserBot, UserManager
-from bot.db.mysql.models import Job
 from bot.keyboards.inline import (
     ik_tool_for_not_accepted_message,
 )
@@ -173,34 +172,11 @@ async def tool_send_messages(
     if not t:
         await query.answer("Не найдено сообщение", show_alert=True)
         return
-    if not t.startswith("PACK_USERS"):
-        await query.answer("Не найдена разметка", show_alert=True)
-        return
 
-    active_bot = None
-    bots: list[UserBot] = await user.awaitable_attrs.bots
-    for bot in bots:
-        if bot.is_started:
-            active_bot = bot
-            break
-
-    if not active_bot:
-        await query.answer("Не найден активный бот", show_alert=True)
-        return
-
-    list_t = t.splitlines()
-    list_t.pop(0)
-    data = [i.strip() for i in list_t]
-
-    j = Job(
-        task="request_send_pack_users",
-        task_metadata=msgpack.packb(data),
-        bot_id=active_bot.id,
-    )
-    session.add(j)
+    user.is_antiflood_mode = False
     await session.commit()
 
-    t += "\n<b>Пользователи поставлены в очередь на отправку сообщения ✅</b>"
+    t += "\n\n<b>Отправка сообщений возобновлена, flood mode выключен ✅</b>"
 
     await query.message.edit_text(t, reply_markup=None)
 

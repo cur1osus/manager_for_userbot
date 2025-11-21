@@ -23,7 +23,7 @@ def key_builder(key: str) -> str:
 key = key_builder("last_id")
 
 
-async def job_sec(sessionmaker: sessionmaker, bot: Bot, redis: Redis):
+async def send_not_accepted_posts(sessionmaker: sessionmaker, bot: Bot, redis: Redis):
     async with sessionmaker() as session:
         users = await session.scalars(
             select(UserAnalyzed)
@@ -77,7 +77,10 @@ async def job_sec(sessionmaker: sessionmaker, bot: Bot, redis: Redis):
             # await bot.send_message(474701274, text=t)
 
 
-async def handle_job(sessionmaker: async_sessionmaker[AsyncSession], bot: Bot):
+async def handle_job_from_userbot(
+    sessionmaker: async_sessionmaker[AsyncSession],
+    bot: Bot,
+):
     async with sessionmaker() as session:
         jobs = await session.scalars(select(Job).where(Job.answer.is_(None)))
         jobs = jobs.all()
@@ -94,13 +97,6 @@ async def handle_job(sessionmaker: async_sessionmaker[AsyncSession], bot: Bot):
             manager = await userbot.awaitable_attrs.manager
             try:
                 match job.task:
-                    case "send_pack_users":
-                        t = msgpack.unpackb(job.task_metadata)
-                        await bot.send_message(
-                            chat_id=manager.id_user,
-                            text=f"PACK_USERS\n\n{t}",
-                            reply_markup=await ik_tool_for_pack_users(),
-                        )
                     case "delete_private_channel":
                         channel = msgpack.unpackb(job.task_metadata)
                         await bot.send_message(
@@ -128,3 +124,36 @@ async def handle_job(sessionmaker: async_sessionmaker[AsyncSession], bot: Bot):
                 logger.error(f"Ошибка при обработке задания {job.id}: {e}")
             job.answer = msgpack.packb(True)
         await session.commit()
+
+
+async def antiflood_pack_users(
+    sessionmaker: async_sessionmaker[AsyncSession],
+    bot: Bot,
+):
+    async with sessionmaker() as session:
+        active_bot = None
+        bots = (
+            await session.scalars(select(UserBot).where(UserBot.is_started.is_(True)))
+        ).all()
+        if bots:
+            active_bot = bots[0]
+
+        if not active_bot:
+            return
+
+        user_manager = await session.get(UserManager, active_bot.user_manager_id)
+        if not user_manager.is_antiflood_mode:
+            return
+
+        pack_users = await fn.get_closer_data_users(
+            session,
+            active_bot.id,
+            user_manager.limit_pack,
+        )
+
+        t = f"Пак от {active_bot.name}[{active_bot.phone}]\n\n{'\n\n'.join(user.username for user in pack_users)}"
+        await bot.send_message(
+            chat_id=user_manager.id_user,
+            text=f"<code>{t}</code>",
+            reply_markup=await ik_tool_for_pack_users(),
+        )
