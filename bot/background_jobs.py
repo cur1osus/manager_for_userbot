@@ -151,6 +151,9 @@ async def antiflood_pack_users(
             user_manager.limit_pack,
         )
 
+        if not pack_users or len(pack_users) < user_manager.limit_pack:
+            return
+
         t = f"Пак от {active_bot.name}[{active_bot.phone}]\n\n{'\n\n'.join(user.username for user in pack_users)}"
         await bot.send_message(
             chat_id=user_manager.id_user,
