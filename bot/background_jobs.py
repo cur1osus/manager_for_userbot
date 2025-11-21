@@ -129,6 +129,7 @@ async def handle_job_from_userbot(
 async def antiflood_pack_users(
     sessionmaker: async_sessionmaker[AsyncSession],
     bot: Bot,
+    redis: Redis,
 ):
     async with sessionmaker() as session:
         active_bot = None
@@ -141,6 +142,10 @@ async def antiflood_pack_users(
         if not active_bot:
             return
 
+        last_pack_key = key_builder(f"antiflood_last_id:{active_bot.id}")
+        last_user_id_raw = await redis.get(last_pack_key)
+        last_user_id = int(last_user_id_raw) if last_user_id_raw is not None else None
+
         user_manager = await session.get(UserManager, active_bot.user_manager_id)
         if not user_manager.is_antiflood_mode:
             return
@@ -149,6 +154,7 @@ async def antiflood_pack_users(
             session,
             active_bot.id,
             user_manager.limit_pack,
+            last_user_id=last_user_id,
         )
 
         if not pack_users or len(pack_users) < user_manager.limit_pack:
@@ -160,3 +166,4 @@ async def antiflood_pack_users(
             text=f"<code>{t}</code>",
             reply_markup=await ik_tool_for_pack_users(),
         )
+        await redis.set(last_pack_key, pack_users[-1].id)

@@ -31,19 +31,20 @@ class Function:
         session: AsyncSession,
         bot_id: int,
         limit: int = 30,
+        last_user_id: int | None = None,
     ) -> list[UserAnalyzed]:
-        users = await session.scalars(
-            select(UserAnalyzed)
-            .where(
-                and_(
-                    UserAnalyzed.accepted.is_(True),
-                    UserAnalyzed.sended.is_(False),
-                    UserAnalyzed.bot_id == bot_id,
-                )
-            )
-            .order_by(UserAnalyzed.id.asc())
-            .limit(limit),
-        )
+        conditions = [
+            UserAnalyzed.accepted.is_(True),
+            UserAnalyzed.sended.is_(False),
+            UserAnalyzed.bot_id == bot_id,
+        ]
+        if last_user_id is not None:
+            conditions.append(UserAnalyzed.id > last_user_id)
+
+        query = select(UserAnalyzed).where(and_(*conditions)).order_by(
+            UserAnalyzed.id.asc()
+        ).limit(limit)
+        users = await session.scalars(query)
 
         return list(users.all())
 

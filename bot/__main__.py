@@ -76,6 +76,7 @@ async def start_scheduler(sessionmaker: sessionmaker, bot: Bot, redis: Redis) ->
         antiflood_pack_users,
         sessionmaker=sessionmaker,
         bot=bot,
+        redis=redis,
     )
     scheduler.every(10).seconds.do(
         send_not_accepted_posts,
