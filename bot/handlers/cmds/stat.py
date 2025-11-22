@@ -9,7 +9,7 @@ from aiogram.fsm.context import FSMContext
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bot.db.mysql.models import UserAnalyzed, UserBot, UserManager
+from bot.db.mysql import UserAnalyzed, UserBot, UserManager
 
 if TYPE_CHECKING:
     from aiogram.types import Message
