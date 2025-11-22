@@ -46,4 +46,7 @@ async def stat_cmd(
                 counter += 1
         bot = await session.get(UserBot, bot_id)
         stat.append(f"{bot.name}[{bot.phone}] есть {counter} чел. на отправку")
+    if not stat:
+        await message.answer("Нет пользователей для статистики")
+        return
     await message.answer("\n".join(stat))
