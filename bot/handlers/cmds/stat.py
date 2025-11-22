@@ -45,7 +45,7 @@ async def stat_cmd(
             if user_analyzed.bot_id == bot_id:
                 counter += 1
         bot = await session.get(UserBot, bot_id)
-        stat.append(f"{bot.name}[{bot.phone}] есть {counter} чел. на отправку")
+        stat.append(f"{bot.name}[{bot.phone}] есть {counter} чел.")
     if not stat:
         await message.answer("Нет пользователей для статистики")
         return
