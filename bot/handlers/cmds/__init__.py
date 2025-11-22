@@ -1,6 +1,6 @@
 from aiogram import Router
 
-from . import start, reset, getlog, vu, do
+from . import do, getlog, reset, start, stat, vu
 
 router = Router()
 router.include_routers(
@@ -9,4 +9,5 @@ router.include_routers(
     getlog.router,
     vu.router,
     do.router,
+    stat.router,
 )

@@ -98,6 +98,7 @@ async def set_default_commands(bot: Bot) -> None:
     await bot.set_my_commands(
         [
             BotCommand(command="start", description="start"),
+            BotCommand(command="stat", description="статистика"),
             BotCommand(command="reset", description="reset"),
             BotCommand(command="log", description="log"),
             BotCommand(command="do", description="доставлен"),
