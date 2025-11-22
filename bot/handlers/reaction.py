@@ -201,7 +201,11 @@ async def tool_ban_user(
         await query.answer("Не найдена запись", show_alert=True)
         return
 
-    username = f"@{user_a.username}"
+    username = (
+        f"@{user_a.username}"
+        if not user_a.username.startswith("@")
+        else user_a.username
+    )
     banned_users = await user.awaitable_attrs.banned_users
     data_to_add = await fn.collapse_repeated_data(
         [i.username for i in banned_users],
