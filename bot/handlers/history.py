@@ -25,61 +25,75 @@ if TYPE_CHECKING:
 
 router = Router()
 logger = logging.getLogger(__name__)
-q_string_per_page = 15
+ROWS_PER_PAGE = 15
+HISTORY_FILTER = (
+    UserAnalyzed.accepted.is_(True),
+    UserAnalyzed.sended.is_(True),
+)
+
+
+def _normalize_page(page: int, total_pages: int) -> int:
+    if page < 1:
+        return 1
+    if page > total_pages:
+        return total_pages
+    return page
+
+
+def _build_history_text(users: list[UserAnalyzed], start_index: int) -> str:
+    rows = []
+    for index, user in enumerate(users, start=start_index):
+        preview = user.additional_message.replace("\n", " ")
+        preview = f"{preview[:10]}..." if len(preview) > 10 else preview
+        bot_tag = f"[{user.bot_id}]" if user.bot_id else ""
+        username = user.username or "без username"
+        line = " ".join(
+            part for part in (f"{index}.", bot_tag, username, preview) if part
+        )
+        rows.append(line)
+
+    text = "\n".join(rows)
+    if len(text) > fn.max_length_message:
+        text = text[: fn.max_length_message - 3] + "..."
+    return text
 
 
 @router.callback_query(F.data == "history")
 async def history(
     query: CallbackQuery,
-    user: UserManager,
+    _user: UserManager,
     state: FSMContext,
     session: AsyncSession,
     current_page: int | None = None,
 ) -> None:
-    len_data = await session.scalar(
-        select(func.count(UserAnalyzed.id)).where(
-            and_(
-                UserAnalyzed.accepted.is_(True),
-                UserAnalyzed.sended.is_(True),
-            )
-        )
+    rows_count = await session.scalar(
+        select(func.count(UserAnalyzed.id)).where(and_(*HISTORY_FILTER))
     )
-    if not len_data:
+    if not rows_count:
         await query.message.edit_text(
             text="История пуста", reply_markup=await ik_back()
         )
         return
-    all_page = await fn.count_page(len_data, q_string_per_page)
-    current_page = current_page or all_page
+
+    all_page = await fn.count_page(rows_count, ROWS_PER_PAGE)
+    current_page = _normalize_page(current_page or all_page, all_page)
     user_analyzed: list[UserAnalyzed] = (
         await session.scalars(
             select(UserAnalyzed)
-            .where(
-                and_(
-                    UserAnalyzed.sended.is_(True),
-                    UserAnalyzed.accepted.is_(True),
-                )
-            )
+            .where(and_(*HISTORY_FILTER))
             .order_by(UserAnalyzed.id.asc())
-            .slice(
-                (current_page - 1) * q_string_per_page,
-                current_page * q_string_per_page,
-            )
+            .offset((current_page - 1) * ROWS_PER_PAGE)
+            .limit(ROWS_PER_PAGE)
         )
     ).all()  # pyright: ignore
-    t = ""
-    start_for_index = ((current_page - 1) * q_string_per_page) + 1
-    for index, _user in enumerate(user_analyzed, start=start_for_index):
-        msg = _user.additional_message[:10].replace("\n", "")
-        t += f"{index}. {f'[{_user.bot_id}]' if _user.bot_id else ''} {_user.username} {msg}...\n"
-    if len(t) > fn.max_length_message:
-        t = t[: fn.max_length_message - 4]
-        t += "..."
+    text = _build_history_text(
+        user_analyzed, start_index=((current_page - 1) * ROWS_PER_PAGE) + 1
+    )
     await state.update_data(
         current_page_history=current_page, all_page_history=all_page
     )
     await query.message.edit_text(
-        text=t,
+        text=text,
         reply_markup=await ik_history_back(
             all_page=all_page,
             current_page=current_page,
@@ -92,21 +106,33 @@ async def arrow_history(
     query: CallbackQuery,
     callback_data: ArrowHistoryFactory,
     user: UserManager,
-    redis: Redis,
+    _redis: Redis,
     state: FSMContext,
     session: AsyncSession,
 ) -> None:
     arrow = callback_data.to
     data = await state.get_data()
-    page = data["current_page_history"]
-    all_page = data["all_page_history"]
+    page = data.get("current_page_history")
+    all_page = data.get("all_page_history")
+
+    if not page or not all_page:
+        await query.answer("История недоступна, откройте её заново.", show_alert=True)
+        return
+    if all_page <= 1:
+        await query.answer("Страница всего одна :(", show_alert=True)
+        return
+
     match arrow:
         case "left":
             page = page - 1 if page > 1 else all_page
         case "right":
             page = page + 1 if page < all_page else 1
+        case _:
+            await query.answer("Неизвестное действие.")
+            return
+
     try:
         await history(query, user, state, session, current_page=page)
-    except Exception as e:
-        logger.exception(e)
-        await query.answer("Страница всего одна :(")
+    except Exception:
+        logger.exception("Failed to show history page %s", page)
+        await query.answer("Не удалось обновить историю.", show_alert=True)
