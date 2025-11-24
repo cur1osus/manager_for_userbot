@@ -61,7 +61,7 @@ def _build_history_text(users: list[UserAnalyzed], start_index: int) -> str:
 @router.callback_query(F.data == "history")
 async def history(
     query: CallbackQuery,
-    _user: UserManager,
+    user: UserManager,
     state: FSMContext,
     session: AsyncSession,
     current_page: int | None = None,
@@ -106,7 +106,7 @@ async def arrow_history(
     query: CallbackQuery,
     callback_data: ArrowHistoryFactory,
     user: UserManager,
-    _redis: Redis,
+    redis: Redis,
     state: FSMContext,
     session: AsyncSession,
 ) -> None:
