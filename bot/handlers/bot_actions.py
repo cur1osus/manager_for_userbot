@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING
 
@@ -21,11 +22,8 @@ from bot.keyboards.inline import (
     ik_connect_bot,
     ik_main_menu,
 )
-from bot.states import UserState
-from bot.states.main import BotState
+from bot.states.main import BotState, UserState
 from bot.utils import fn
-from bot.utils.manager import delete_bot
-from config import path_to_folder
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -63,10 +61,9 @@ async def manage_bot(
 @router.callback_query(BotState.main, F.data == "connect")
 async def connect_bot(
     query: CallbackQuery,
-    user: UserManager,
-    redis: Redis,
     state: FSMContext,
     session: AsyncSession,
+    user: UserManager,
 ) -> None:
     bot_id = (await state.get_data()).get("bot_id")
 
@@ -75,28 +72,55 @@ async def connect_bot(
         return
 
     bot = await user.get_obj_bot(bot_id)
-    phone_code_hash = await fn.send_code_via_telethon(
+    if not bot:
+        await query.message.edit_text(text="Бот не найден")
+        return
+
+    await fn.Manager.start_bot(
+        bot.phone,
+        bot.path_session,
+        bot.api_id,
+        bot.api_hash,
+    )
+    await query.message.edit_text(
+        "Пытаемся подключить Бота с уже существующей сессией..."
+    )
+
+    await asyncio.sleep(2)
+    if await fn.Manager.bot_run(bot.phone):
+        bot.is_connected = True
+        await session.commit()
+        await query.message.edit_text(
+            "Бот успешно подключен!",
+            reply_markup=await ik_action_with_bot(back_to="bots"),
+        )
+        return
+
+    result = await fn.Telethon.send_code_via_telethon(
         bot.phone,
         bot.api_id,
         bot.api_hash,
         bot.path_session,
     )
-    if not phone_code_hash:
-        await query.message.answer("Ошибка при отправке кода", reply_markup=None)
+    if result.success:
+        await query.message.edit_text(
+            "К сожалению, Бот не смог подключиться по старой сессии, "
+            "поэтому мы отправили код, как получите его отправьте мне",
+        )
+    else:
+        await query.message.answer(f"Ошибка при отправке кода: {result.message}")
         return
 
-    await state.set_state(UserState.enter_code)
     await state.update_data(
+        bot_id=bot.id,
         api_id=bot.api_id,
         api_hash=bot.api_hash,
         phone=bot.phone,
-        phone_code_hash=phone_code_hash,
+        phone_code_hash=result.message,
         path_session=bot.path_session,
         save_bot=False,
     )
-    await session.execute(delete(Job).where(Job.bot_id == bot.id))
-    await session.commit()
-    await query.message.edit_text("Введите code", reply_markup=None)
+    await state.set_state(UserState.enter_code)
 
 
 @router.callback_query(BotState.main, F.data == "start")
@@ -155,7 +179,7 @@ async def disconnected_bot(
 
     bot.is_connected = False
     bot.is_started = False
-    await delete_bot(phone=bot.phone, path_to_folder=path_to_folder)
+    await fn.Manager.stop_bot(phone=bot.phone)
     await session.execute(delete(Job).where(Job.bot_id == bot.id))
     await session.commit()
     await query.message.edit_text("Бот отключен", reply_markup=await ik_main_menu(user))
@@ -178,7 +202,7 @@ async def delete_bot_from_list(
         return
 
     user.bots.remove(bot)
-    await delete_bot(phone=bot.phone, path_to_folder=path_to_folder)
+    await fn.Manager.stop_bot(phone=bot.phone, delete_session=True)
     await session.commit()
     await fn.state_clear(state)
     await query.message.edit_text("Бот удален", reply_markup=await ik_main_menu(user))

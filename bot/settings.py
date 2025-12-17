@@ -1,7 +1,9 @@
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
 from redis.asyncio import Redis
 from sqlalchemy import URL
-from dotenv import load_dotenv
-import os
 
 load_dotenv()
 
@@ -24,6 +26,12 @@ class DBSettings:
 
 class Settings:
     bot_token = os.environ.get("BOT_TOKEN", "")
+    path_to_folder = os.environ.get("PATH_TO_FOLDER", "sessions")
+    script_path = os.environ.get(
+        "SCRIPT_PATH",
+        str(Path(__file__).resolve().parent.parent / "start_bot.sh"),
+    )
+    sep = os.environ.get("SEP", "\n")
 
     db: DBSettings = DBSettings()
     redis: RedisSettings = RedisSettings()
@@ -49,3 +57,6 @@ class Settings:
 
     async def redis_dsn(self) -> Redis:
         return Redis(host=self.redis.host, port=self.redis.port, db=self.redis.db)
+
+
+se = Settings()

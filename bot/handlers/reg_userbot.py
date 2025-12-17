@@ -17,7 +17,7 @@ from bot.keyboards.inline import ik_main_menu
 from bot.keyboards.reply import rk_cancel
 from bot.states import UserState
 from bot.utils import fn
-from bot.utils.manager import start_bot
+from bot.settings import se
 
 if TYPE_CHECKING:
     from aiogram.types import Message
@@ -25,7 +25,6 @@ if TYPE_CHECKING:
 
 router = Router()
 logger = logging.getLogger(__name__)
-path_to_folder = "sessions"
 
 
 @router.message(any_state, F.text == "Отмена")
@@ -73,29 +72,37 @@ async def process_enter_api_hash(
 async def process_enter_phone(
     message: Message, redis: Redis, state: FSMContext
 ) -> None:
-    await state.update_data(phone=message.text)
-    data = await state.get_data()
-    api_id = data["api_id"]
-    api_hash = data["api_hash"]
     if not message.text:
         return
-    if not os.path.exists(path_to_folder):
-        os.makedirs(path_to_folder)
 
-    # Получаем абсолютный путь
-    session_name = f"{path_to_folder}/{message.text}_session"
-    absolute_path = os.path.abspath(f"{session_name}.session")
+    os.makedirs(se.path_to_folder, exist_ok=True)
 
-    path_session = absolute_path
-    phone_code_hash = await fn.send_code_via_telethon(
+    await state.update_data(phone=message.text)
+    data = await state.get_data()
+    api_id = data.get("api_id")
+    api_hash = data.get("api_hash")
+
+    if not api_id or not api_hash:
+        await message.answer(
+            "Произошла ошибка, не обнаружено API ID или API HASH, нажмите 'Отмена' и попробуйте снова"
+        )
+        return
+
+    relative_path = f"{se.path_to_folder}/{message.text}"
+    path_session = os.path.abspath(f"{relative_path}.session")
+
+    result = await fn.Telethon.send_code_via_telethon(
         message.text,
         int(api_id),
         api_hash,
         path_session,
     )
-    if phone_code_hash is None:
-        await message.answer("Ошибка при отправке кода", reply_markup=None)
+
+    if not result.success:
+        await message.answer(str(result.message), reply_markup=None)
         return
+
+    phone_code_hash = result.message
     await state.update_data(
         phone_code_hash=phone_code_hash,
         path_session=path_session,
@@ -125,27 +132,30 @@ async def process_enter_code(
     path_session = data["path_session"]
     if not message.text:
         return
-    r = await fn.create_telethon_session(
+    api_id_int = int(api_id)
+    r = await fn.Telethon.create_telethon_session(
         phone,
         code,  # pyright: ignore
-        int(api_id),
+        api_id_int,
         api_hash,
         phone_code_hash,
         password,
         path_session,
     )
-    if r.message == "password":
+    if r.message == "password_required":
         await message.answer("Введите пароль", reply_markup=None)
         await state.update_data(code=message.text, is_password=True)
         return
-    elif r.message == "error":
-        await message.answer("Ошибка при создании сессии", reply_markup=None)
+    if not r.success:
+        await message.answer(str(r.message), reply_markup=None)
         await fn.state_clear(state)
         return
 
-    if data.get("save_bot", True):
+    save_bot = data.get("save_bot", True)
+    bot_id = data.get("bot_id")
+    if save_bot:
         bot = Bot(
-            api_id=int(api_id),
+            api_id=api_id_int,
             api_hash=api_hash,
             phone=phone,
             path_session=path_session,
@@ -158,8 +168,22 @@ async def process_enter_code(
         bots.append(bot)
         session.add(bot)
         await session.commit()
+    elif bot_id:
+        bot = await user.get_obj_bot(bot_id)
+        if not bot:
+            await message.answer(
+                "Бот не найден для обновления состояния",
+                reply_markup=ReplyKeyboardRemove(),
+            )
+            await fn.state_clear(state)
+            return
+        bot.is_connected = True
+        bot.path_session = path_session
+        await session.commit()
 
-    asyncio.create_task(start_bot(phone, path_to_folder))
+    asyncio.create_task(
+        fn.Manager.start_bot(phone, path_session, api_id_int, api_hash)
+    )
     await message.answer("Бот подключен и запущен", reply_markup=ReplyKeyboardRemove())
     await fn.state_clear(state)
     msg = await message.answer("Главное меню", reply_markup=await ik_main_menu(user))

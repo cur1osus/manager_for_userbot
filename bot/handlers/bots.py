@@ -16,8 +16,7 @@ from bot.keyboards.inline import (
     ik_available_bots,
     ik_back,
 )
-from bot.utils.manager import bot_has_started
-from config import path_to_folder
+from bot.utils import fn
 
 if TYPE_CHECKING:
     pass
@@ -39,7 +38,7 @@ async def show_bots(
         )
         return
     for bot in bots:
-        r = await bot_has_started(bot.phone, path_to_folder)
+        r = await fn.Manager.bot_run(bot.phone)
         bot.is_connected = r
         if r:
             job = Job(task=JobName.get_me_name.value)

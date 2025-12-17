@@ -1,17 +1,38 @@
+from __future__ import annotations
+
+import asyncio
 import dataclasses
 import logging
-import re
-from typing import Any, Final
+import os
+import signal
+import subprocess
+from pathlib import Path
+from typing import Any, Awaitable, Callable, Final
 
+import psutil  # type: ignore
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 from aiogram.utils.formatting import Code
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from telethon import TelegramClient  # type: ignore
-from telethon.errors import SessionPasswordNeededError  # type: ignore
+from telethon.errors import (
+    PhoneCodeExpiredError,
+    PhoneCodeInvalidError,
+    PhoneNumberBannedError,
+    PhoneNumberInvalidError,
+    SessionPasswordNeededError,
+)
+from telethon.errors.rpcerrorlist import FloodWaitError
 
 from bot.db.mysql.models import MonitoringChat, UserAnalyzed
+from bot.settings import se
+
+logger = logging.getLogger(__name__)
+
+PID_SUFFIX: Final[str] = ".pid"
+SESSION_SUFFIX: Final[str] = ".session"
+PID_FILE_WAIT_SECONDS: Final[float] = 1.0
 
 
 @dataclasses.dataclass
@@ -20,7 +41,18 @@ class Result:
     message: str | None
 
 
-logger = logging.getLogger(__name__)
+def _pid_file(phone: str) -> Path:
+    return Path(se.path_to_folder) / f"{phone}{PID_SUFFIX}"
+
+
+def _read_pid(pid_path: Path) -> int | None:
+    try:
+        return int(pid_path.read_text().strip())
+    except FileNotFoundError:
+        logger.info("PID-файл не найден: %s", pid_path)
+    except (OSError, ValueError) as exc:
+        logger.warning("Не удалось прочитать PID-файл %s: %s", pid_path, exc)
+    return None
 
 
 class Function:
@@ -78,58 +110,8 @@ class Function:
                     message_id=message_id_to_delete,
                     reply_markup=None,
                 )
-            except:
-                pass
-
-    @staticmethod
-    async def create_telethon_session(
-        phone: str,
-        code: str | int,
-        api_id: int,
-        api_hash: str,
-        phone_code_hash: str,
-        password: str | None,
-        path: str,
-    ) -> Result:
-        client = TelegramClient(path, api_id, api_hash)
-        try:
-            await client.connect()
-            if not await client.is_user_authorized():
-                if password:
-                    await client.sign_in(password=password)
-                else:
-                    await client.sign_in(phone, code, phone_code_hash=phone_code_hash)
-            logger.info("Авторизация прошла успешно!")
-            logger.info((await client.get_me()).first_name)
-            await client.disconnect()
-            return Result(success=True, message=None)
-        except SessionPasswordNeededError:
-            logger.info("Необходим пароль для двухфакторной аутентификации.")
-            return Result(success=False, message="password")
-        except Exception as e:
-            logger.info(f"Ошибка: {e}")
-            return Result(success=False, message="error")
-
-    @staticmethod
-    async def send_code_via_telethon(
-        phone: str,
-        api_id: int,
-        api_hash: str,
-        path: str,
-    ) -> str | None:
-        """Отправка кода на номер телефона через Telethon"""
-        client = TelegramClient(path, api_id, api_hash)
-        try:
-            await client.connect()
-            r = None
-            if not await client.is_user_authorized():
-                r = await client.send_code_request(phone)
-                logger.info(f"Код подтверждения отправлен на номер {phone}.")
-            await client.disconnect()
-            return r.phone_code_hash if r else r
-        except Exception as e:
-            logger.info(f"Ошибка при отправке кода: {e}")
-            return None
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("Не удалось удалить клавиатуру: %s", exc)
 
     @staticmethod
     async def collapse_repeated_data(
@@ -219,128 +201,298 @@ class Function:
             )
         return Code(rows_str).as_html() if copy else rows_str
 
-    @staticmethod
-    def get_log(file_path: str, line_count: int = 20) -> list[str] | str:
-        """
-        Получить последние строки из файла.
+    class Manager:
+        @staticmethod
+        async def start_bot(
+            phone: str, path_session: str, api_id: int, api_hash: str
+        ) -> int:
+            script_path = Path(se.script_path)
+            if not script_path.exists():
+                logger.error("Bash script not found: %s", script_path)
+                return -1
 
-        :param file_path: Путь к файлу логов.
-        :param line_count: Количество строк, которые нужно получить (по умолчанию 20).
-        :return: Список последних строк.
-        """
-        try:
-            with open(file_path, "rb") as file:
-                file.seek(0, 2)  # Переходим в конец файла
-                buffer = bytearray()
-
-                while len(buffer.splitlines()) <= line_count and file.tell() > 0:
-                    # Смещаемся назад блоками по 1024 байта
-                    step = min(1024, file.tell())
-                    file.seek(-step, 1)
-                    buffer = file.read(step) + buffer  # type: ignore
-                    file.seek(-step, 1)
-
-                lines = buffer.splitlines()[-line_count:]
-                return [line.decode("utf-8") for line in lines]
-        except FileNotFoundError:
-            return "Файл не найден"
-        except Exception as e:
-            return f"Ошибка при чтении файла: {e}"
-
-    @staticmethod
-    async def short_view(id_in_db: int, userbot_name: str, d: dict, raw_message: str):
-        message = f"id{id_in_db} [{userbot_name}]\n\n"
-        threshold_view_message = 30
-
-        if r := d.get("banned"):
-            message += f"🔴 Забанен: {r}\n\n"
-            return message
-
-        if r := d.get("not_mention"):
-            message += "Не нашел упоминания\n\n"
-
-        if r := d.get("already_exist"):
-            message += f"Уже существует в базе данных {r}\n\n"
-
-        if not d.get("triggers"):
-            message += "✳️ Не содержит триггеров\n\n"
-            return message
-
-        message += f"{raw_message[:threshold_view_message]}...\n"
-
-        return message
-
-    @staticmethod
-    async def long_view(id_in_db: int, d: dict, raw_message: str):
-        message = f"id{id_in_db}\n\n"
-
-        if r := d.get("banned"):
-            message += f"🔴 Забанен: {r}\n\n"
-
-        if r := d.get("not_mention"):
-            message += "Не нашел упоминания\n\n"
-
-        if r := d.get("already_exist"):
-            message += f"Уже существует в базе данных {r}\n\n"
-
-        if r := d.get("triggers"):
-            for trigger in r:
-                raw_message = Function.highlight_word(
-                    trigger, raw_message, save_original=True, tag="u"
-                )
-
-        if r := d.get("ignores"):
-            for ignore in r:
-                raw_message = Function.highlight_word(
-                    ignore, raw_message, save_original=True
-                )
-
-        message += f"{raw_message}\n"
-
-        return message
-
-    @staticmethod
-    def replace_by_slice(text, start, end, replacement):
-        """
-        Заменяет подстроку в тексте по индексам среза (start, end) на новую строку.
-
-        :param text: Исходная строка
-        :param start: Начальный индекс среза (включительно)
-        :param end: Конечный индекс среза (не включительно)
-        :param replacement: Строка, на которую нужно заменить
-        :return: Новая строка с заменой
-        """
-        if start < 0:
-            start = 0
-        if end > len(text):
-            end = len(text)
-        if start > end:
-            raise ValueError("Начальный индекс не может быть больше конечного")
-
-        return text[:start] + replacement + text[end:]
-
-    @staticmethod
-    def highlight_word(word: str, message: str, save_original=False, tag="b") -> str:
-        if not save_original:
-            message = message.replace("\n", " ")
-        match = re.finditer(word, message, re.IGNORECASE)
-        offset = 0
-        for m in match:
-            x, y = m.span()
-            if offset:
-                x += offset
-                y += offset
-            t = f"<{tag}>{m.group()}</{tag}>"
-            message = Function.replace_by_slice(
-                message, x, y, f"<{tag}>{m.group()}</{tag}>"
+            await asyncio.create_subprocess_exec(
+                str(script_path),
+                path_session,
+                str(api_id),
+                api_hash,
+                phone,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL,
+                preexec_fn=os.setpgrp,
+                start_new_session=True,
             )
-            offset += len(t) - len(m.group())
-        return message
+
+            await asyncio.sleep(PID_FILE_WAIT_SECONDS)
+
+            path_pid = _pid_file(phone)
+            pid = _read_pid(path_pid)
+            if pid:
+                logger.info("Bot started with PID: %s", pid)
+                return pid
+
+            logger.error("PID file not created for %s", phone)
+            return -1
+
+        @staticmethod
+        async def bot_run(phone: str) -> bool:
+            pid = _read_pid(_pid_file(phone))
+            return bool(pid and psutil.pid_exists(pid))
+
+        @staticmethod
+        async def stop_bot(phone: str, delete_session: bool = False) -> None:
+            pid_file = _pid_file(phone)
+            pid = _read_pid(pid_file)
+            if pid is None:
+                logger.info("PID-файл не найден для %s", phone)
+                return
+
+            try:
+                os.killpg(os.getpgid(pid), signal.SIGTERM)
+                logger.info("Отправлен сигнал завершения процессу с PID: %s", pid)
+            except ProcessLookupError:
+                logger.info("Процесс не найден: %s", pid)
+            except PermissionError:
+                logger.info("Нет прав на завершение процесса: %s", pid)
+
+            files = [pid_file.name]
+            if delete_session:
+                files.append(f"{phone}{SESSION_SUFFIX}")
+            await Function.Manager.delete_files_by_name(se.path_to_folder, files)
+
+        @staticmethod
+        async def delete_files_by_name(folder_path: str, filenames: list[str]) -> None:
+            folder = Path(folder_path)
+            if not folder.exists():
+                logger.info("Папка %s не существует.", folder)
+                return
+
+            targets = set(filenames)
+            for file_path in folder.iterdir():
+                if file_path.is_file() and file_path.name in targets:
+                    try:
+                        file_path.unlink()
+                        logger.info("Удален файл: %s", file_path)
+                    except Exception as exc:  # noqa: BLE001
+                        logger.info("Не удалось удалить %s: %s", file_path, exc)
+
+    class Telethon:
+        @staticmethod
+        def _is_valid_phone(phone: str) -> bool:
+            return bool(phone) and phone.lstrip("+").isdigit()
+
+        @staticmethod
+        def _is_valid_api_id(api_id: int) -> bool:
+            return isinstance(api_id, int) and api_id > 0
+
+        @staticmethod
+        def _is_valid_api_hash(api_hash: str) -> bool:
+            return isinstance(api_hash, str) and len(api_hash) == 32
+
+        @staticmethod
+        def _is_valid_session_path(path: str) -> bool:
+            session_path = str(path)
+            return bool(session_path) and session_path.endswith(SESSION_SUFFIX)
+
+        @classmethod
+        async def _with_client(
+            cls,
+            path: str,
+            api_id: int,
+            api_hash: str,
+            action: Callable[[TelegramClient], Awaitable[Result]],
+            context: str,
+        ) -> Result:
+            client: TelegramClient | None = None
+            try:
+                session_path = str(path)
+                client = TelegramClient(session_path, api_id, api_hash)
+                await client.connect()
+                logger.info(context)
+                return await action(client)
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("Критическая ошибка при работе с сессией: %s", exc)
+                return Result(success=False, message="critical_error")
+            finally:
+                if client:
+                    try:
+                        await client.disconnect()  # pyright: ignore
+                    except Exception as disconnect_exc:  # noqa: BLE001
+                        logger.debug(
+                            "Ошибка при отключении клиента: %s", disconnect_exc
+                        )
+
+        @classmethod
+        async def create_telethon_session(
+            cls,
+            phone: str,
+            code: str | int,
+            api_id: int,
+            api_hash: str,
+            phone_code_hash: str,
+            password: str | None,
+            path: str,
+        ) -> Result:
+            if not cls._is_valid_phone(phone):
+                return Result(success=False, message="invalid_phone")
+            if not cls._is_valid_api_id(api_id):
+                return Result(success=False, message="invalid_api_id")
+            if not cls._is_valid_api_hash(api_hash):
+                return Result(success=False, message="invalid_api_hash")
+            if not cls._is_valid_session_path(path):
+                return Result(success=False, message="invalid_path")
+
+            code_str = str(code).strip()
+
+            async def _authorize(client: TelegramClient) -> Result:
+                if await client.is_user_authorized():
+                    me = await client.get_me()
+                    logger.info(
+                        "Пользователь уже авторизован: %s (@%s)",
+                        me.first_name,
+                        me.username,
+                    )
+                    return Result(success=True, message=None)
+
+                try:
+                    if password:
+                        await client.sign_in(password=password)
+                    else:
+                        await client.sign_in(
+                            phone=phone, code=code_str, phone_code_hash=phone_code_hash
+                        )
+
+                    if await client.is_user_authorized():
+                        me = await client.get_me()
+                        logger.info("Авторизация прошла успешно!")
+                        logger.info(
+                            "Пользователь: %s (@%s)", me.first_name, me.username
+                        )
+                        return Result(success=True, message=None)
+                    return Result(success=False, message="auth_failed")
+                except PhoneCodeInvalidError:
+                    logger.warning("Неверный код для номера %s.", phone)
+                    return Result(success=False, message="invalid_code")
+                except PhoneCodeExpiredError:
+                    logger.warning("Код устарел для номера %s.", phone)
+                    return Result(success=False, message="code_expired")
+                except SessionPasswordNeededError:
+                    logger.info("Требуется пароль 2FA для номера %s.", phone)
+                    return Result(success=False, message="password_required")
+                except FloodWaitError as e:
+                    logger.warning(
+                        "Ожидание FloodWait: необходимо подождать %s секунд.", e.seconds
+                    )
+                    return Result(success=False, message=f"flood_wait:{e.seconds}")
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception("Неожиданная ошибка при авторизации: %s", exc)
+                    return Result(success=False, message=f"error:{exc!s}")
+
+            return await cls._with_client(
+                path,
+                api_id,
+                api_hash,
+                _authorize,
+                f"Подключение к Telegram для номера {phone}...",
+            )
+
+        @classmethod
+        async def send_code_via_telethon(
+            cls,
+            phone: str,
+            api_id: int,
+            api_hash: str,
+            path: str,
+        ) -> Result:
+            if not cls._is_valid_phone(phone):
+                logger.warning("Неверный формат номера телефона: %s", phone)
+                return Result(success=False, message="Неверный формат номера телефона")
+            if not cls._is_valid_api_id(api_id):
+                logger.warning("Неверный API ID: %s", api_id)
+                return Result(success=False, message="Неверный API ID")
+            if not cls._is_valid_api_hash(api_hash):
+                logger.warning("Неверный или отсутствующий API Hash.")
+                return Result(success=False, message="Неверный API Hash")
+            if not cls._is_valid_session_path(path):
+                logger.warning("Некорректный путь к сессии: %s", path)
+                return Result(success=False, message="Некорректный путь к сессии")
+
+            async def _send_code(client: TelegramClient) -> Result:
+                if await client.is_user_authorized():
+                    logger.info("Пользователь с номером %s уже авторизован.", phone)
+                    return Result(success=False, message="Пользователь уже авторизован")
+
+                try:
+                    result = await client.send_code_request(
+                        phone=phone,
+                        force_sms=False,
+                    )
+                    phone_code_hash = result.phone_code_hash
+                    logger.info(
+                        "Код подтверждения успешно отправлен на %s. Hash: %s...",
+                        phone,
+                        phone_code_hash[:8],
+                    )
+                    return Result(success=True, message=phone_code_hash)
+                except PhoneNumberInvalidError:
+                    logger.warning("Неверный номер телефона: %s", phone)
+                    return Result(success=False, message="Неверный номер телефона")
+                except PhoneNumberBannedError:
+                    logger.exception(
+                        "Номер %s заблокирован (banned) в Telegram.", phone
+                    )
+                    return Result(success=False, message="Номер заблокирован")
+                except SessionPasswordNeededError:
+                    logger.warning(
+                        "Для номера %s требуется пароль (2FA), но сессия не авторизована.",
+                        phone,
+                    )
+                    return Result(success=False, message="Требуется пароль")
+                except FloodWaitError as e:
+                    wait_msg = f"Ограничение FloodWait: нельзя отправлять код. Подождите {e.seconds} секунд."
+                    logger.warning(wait_msg)
+                    return Result(success=False, message=wait_msg)
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception(
+                        "Неизвестная ошибка при отправке кода на %s: %s", phone, exc
+                    )
+                    return Result(
+                        success=False,
+                        message=f"Неизвестная ошибка при отправке кода на {phone}: {exc}",
+                    )
+
+            return await cls._with_client(
+                path,
+                api_id,
+                api_hash,
+                _send_code,
+                f"Подключение к Telegram для отправки кода на {phone}...",
+            )
+
+    # Backward-compatible wrappers
+    @staticmethod
+    async def create_telethon_session(
+        phone: str,
+        code: str | int,
+        api_id: int,
+        api_hash: str,
+        phone_code_hash: str,
+        password: str | None,
+        path: str,
+    ) -> Result:
+        return await Function.Telethon.create_telethon_session(
+            phone, code, api_id, api_hash, phone_code_hash, password, path
+        )
 
     @staticmethod
-    def get_id_from_message(message: str) -> int | None:
-        match = re.search(r"id\d+", message)
-        if match:
-            r = match.group()
-            return int(r[2:])
-        return None
+    async def send_code_via_telethon(
+        phone: str,
+        api_id: int,
+        api_hash: str,
+        path: str,
+    ) -> str | None:
+        result = await Function.Telethon.send_code_via_telethon(
+            phone, api_id, api_hash, path
+        )
+        return result.message if result.success else None
