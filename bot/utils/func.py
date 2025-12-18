@@ -297,6 +297,8 @@ class Function:
                         logger.info("Не удалось удалить %s: %s", file_path, exc)
 
     class Telethon:
+        ALREADY_AUTHORIZED = "already_authorized"
+
         @staticmethod
         def _is_valid_phone(phone: str) -> bool:
             return bool(phone) and phone.lstrip("+").isdigit()
@@ -443,7 +445,7 @@ class Function:
             async def _send_code(client: TelegramClient) -> Result:
                 if await client.is_user_authorized():
                     logger.info("Пользователь с номером %s уже авторизован.", phone)
-                    return Result(success=False, message="Пользователь уже авторизован")
+                    return Result(success=True, message=cls.ALREADY_AUTHORIZED)
 
                 try:
                     result = await client.send_code_request(

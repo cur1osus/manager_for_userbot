@@ -29,6 +29,76 @@ router = Router()
 logger = logging.getLogger(__name__)
 
 
+async def _finish_bot_setup(
+    *,
+    message: "Message",
+    state: FSMContext,
+    session: AsyncSession,
+    user: UserManager,
+    api_id: int,
+    api_hash: str,
+    phone: str,
+    path_session: str,
+) -> None:
+    data = await state.get_data()
+    folder_name: str | None = None
+    save_bot = data.get("save_bot", True)
+    bot_id = data.get("bot_id")
+
+    if save_bot:
+        target_folder_id: int | None = None
+        folder_id = data.get("new_bot_folder_id")
+        if folder_id is not None:
+            folder = await session.scalar(
+                select(BotFolder).where(
+                    BotFolder.id == folder_id,
+                    BotFolder.user_manager_id == user.id,
+                )
+            )
+            if folder:
+                target_folder_id = folder.id
+                folder_name = folder.name
+            else:
+                await message.answer("Папка не найдена, бот будет без папки")
+
+        bot = Bot(
+            api_id=api_id,
+            api_hash=api_hash,
+            phone=phone,
+            path_session=path_session,
+            is_connected=True,
+            folder_id=target_folder_id,
+        )
+        job = Job(task=JobName.get_me_name.value)
+        jobs = await bot.awaitable_attrs.jobs
+        jobs.append(job)
+        bots = await user.awaitable_attrs.bots
+        bots.append(bot)
+        session.add(bot)
+        await session.commit()
+    elif bot_id:
+        bot = await user.get_obj_bot(bot_id)
+        if not bot:
+            await message.answer(
+                "Бот не найден для обновления состояния",
+                reply_markup=ReplyKeyboardRemove(),
+            )
+            await fn.state_clear(state)
+            return
+        bot.is_connected = True
+        bot.path_session = path_session
+        await session.commit()
+
+    asyncio.create_task(fn.Manager.start_bot(phone, path_session, api_id, api_hash))
+    status_text = "Бот подключен и запущен"
+    if folder_name:
+        status_text += f"\nПапка: {folder_name}"
+    await message.answer(status_text, reply_markup=ReplyKeyboardRemove())
+    await fn.state_clear(state)
+    msg = await message.answer("Главное меню", reply_markup=await ik_main_menu(user))
+    await fn.set_general_message(state, msg)
+
+
 async def _start_bot_registration(
     query: CallbackQuery,
     state: FSMContext,
@@ -93,7 +163,11 @@ async def process_enter_api_hash(
 
 @router.message(UserState.enter_phone)
 async def process_enter_phone(
-    message: Message, redis: Redis, state: FSMContext
+    message: Message,
+    redis: Redis,
+    state: FSMContext,
+    session: AsyncSession,
+    user: UserManager,
 ) -> None:
     if not message.text:
         return
@@ -123,6 +197,19 @@ async def process_enter_phone(
 
     if not result.success:
         await message.answer(str(result.message), reply_markup=None)
+        return
+
+    if result.message == fn.Telethon.ALREADY_AUTHORIZED:
+        await _finish_bot_setup(
+            message=message,
+            state=state,
+            session=session,
+            user=user,
+            api_id=int(api_id),
+            api_hash=api_hash,
+            phone=message.text,
+            path_session=path_session,
+        )
         return
 
     phone_code_hash = result.message
@@ -174,58 +261,13 @@ async def process_enter_code(
         await fn.state_clear(state)
         return
 
-    folder_name: str | None = None
-    save_bot = data.get("save_bot", True)
-    bot_id = data.get("bot_id")
-    if save_bot:
-        target_folder_id: int | None = None
-        folder_id = data.get("new_bot_folder_id")
-        if folder_id is not None:
-            folder = await session.scalar(
-                select(BotFolder).where(
-                    BotFolder.id == folder_id,
-                    BotFolder.user_manager_id == user.id,
-                )
-            )
-            if folder:
-                target_folder_id = folder.id
-                folder_name = folder.name
-            else:
-                await message.answer("Папка не найдена, бот будет без папки")
-
-        bot = Bot(
-            api_id=api_id_int,
-            api_hash=api_hash,
-            phone=phone,
-            path_session=path_session,
-            is_connected=True,
-            folder_id=target_folder_id,
-        )
-        job = Job(task=JobName.get_me_name.value)
-        jobs = await bot.awaitable_attrs.jobs
-        jobs.append(job)
-        bots = await user.awaitable_attrs.bots
-        bots.append(bot)
-        session.add(bot)
-        await session.commit()
-    elif bot_id:
-        bot = await user.get_obj_bot(bot_id)
-        if not bot:
-            await message.answer(
-                "Бот не найден для обновления состояния",
-                reply_markup=ReplyKeyboardRemove(),
-            )
-            await fn.state_clear(state)
-            return
-        bot.is_connected = True
-        bot.path_session = path_session
-        await session.commit()
-
-    asyncio.create_task(fn.Manager.start_bot(phone, path_session, api_id_int, api_hash))
-    status_text = "Бот подключен и запущен"
-    if folder_name:
-        status_text += f"\nПапка: {folder_name}"
-    await message.answer(status_text, reply_markup=ReplyKeyboardRemove())
-    await fn.state_clear(state)
-    msg = await message.answer("Главное меню", reply_markup=await ik_main_menu(user))
-    await fn.set_general_message(state, msg)
+    await _finish_bot_setup(
+        message=message,
+        state=state,
+        session=session,
+        user=user,
+        api_id=api_id_int,
+        api_hash=api_hash,
+        phone=phone,
+        path_session=path_session,
+    )

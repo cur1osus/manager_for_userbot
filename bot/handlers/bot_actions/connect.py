@@ -71,6 +71,31 @@ async def connect_bot(
         bot.path_session,
     )
     if result.success:
+        if result.message == fn.Telethon.ALREADY_AUTHORIZED:
+            await query.message.edit_text(
+                "Сессия уже авторизована — пробуем запустить бота без кода..."
+            )
+            await fn.Manager.start_bot(
+                bot.phone,
+                bot.path_session,
+                bot.api_id,
+                bot.api_hash,
+            )
+            await asyncio.sleep(2)
+            if await fn.Manager.bot_run(bot.phone):
+                bot.is_connected = True
+                await session.commit()
+                await query.message.edit_text(
+                    "Бот уже был авторизован и успешно запущен",
+                    reply_markup=await ik_action_with_bot(back_to=back_to),
+                )
+            else:
+                await query.message.edit_text(
+                    "Сессия авторизована, но бот не запустился. Проверьте лог в папке sessions.",
+                    reply_markup=await ik_connect_bot(back_to=back_to),
+                )
+            return
+
         await query.message.edit_text(
             "К сожалению, Бот не смог подключиться по старой сессии, "
             "поэтому мы отправили код, как получите его отправьте мне",
