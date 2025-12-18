@@ -8,6 +8,15 @@ from sqlalchemy import URL
 load_dotenv()
 
 
+def _decode_sep(value: str) -> str:
+    """Конвертирует escape-последовательности вроде '\\n' в реальные символы."""
+    try:
+        decoded = value.encode("utf-8").decode("unicode_escape")
+    except Exception:
+        return value or "\n"
+    return decoded or "\n"
+
+
 class RedisSettings:
     def __init__(self) -> None:
         self.host = os.environ.get("REDIS_HOST", "localhost")
@@ -25,16 +34,18 @@ class DBSettings:
 
 
 class Settings:
-    bot_token = os.environ.get("BOT_TOKEN", "")
-    path_to_folder = os.environ.get("PATH_TO_FOLDER", "sessions")
-    script_path = os.environ.get(
-        "SCRIPT_PATH",
-        str(Path(__file__).resolve().parent.parent / "start_bot.sh"),
-    )
-    sep = os.environ.get("SEP", "\n")
+    def __init__(self) -> None:
+        self.bot_token = os.environ.get("BOT_TOKEN", "")
+        self.path_to_folder = os.environ.get("PATH_TO_FOLDER", "sessions")
+        self.script_path = os.environ.get(
+            "SCRIPT_PATH",
+            str(Path(__file__).resolve().parent.parent / "start_bot.sh"),
+        )
+        raw_sep = os.environ.get("SEP", "\n")
+        self.sep = _decode_sep(raw_sep)
 
-    db: DBSettings = DBSettings()
-    redis: RedisSettings = RedisSettings()
+        self.db: DBSettings = DBSettings()
+        self.redis: RedisSettings = RedisSettings()
 
     def mysql_dsn(self) -> URL:
         return URL.create(

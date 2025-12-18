@@ -3,13 +3,13 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import time
 from typing import Any, Optional
 
 import msgpack
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
-from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.db.models import Job, JobName, UserManager
@@ -28,50 +28,54 @@ from bot.keyboards.inline import (
     ik_processed_users,
 )
 from bot.states.main import BotState
+from bot.settings import se
 from bot.utils import fn
 
 router = Router()
 logger = logging.getLogger(__name__)
 
 # Константы
-MAX_RETRIES = 3
-SLEEP_INTERVAL = 0.5
+POLL_INTERVAL = 0.35
+UI_UPDATE_INTERVAL = 0.8
+WAIT_TIMEOUT = 20.0
+SPINNER_FRAMES = ("", ".", "..", "...")
 USERS_PER_PAGE = 15
 
 
 async def _wait_for_job_completion(
     sessionmaker: async_sessionmaker,
     bot_id: int,
-    task_name: str,
+    job_id: int,
     message: Message,
     error_text: str = "Не смог получить данные",
 ) -> Optional[Job]:
-    """Ожидает завершения задачи и возвращает результат."""
-    for attempt in range(MAX_RETRIES + 1):
-        # Анимация ожидания
-        animation_frames = ["", ".", "..", "...", "...."]
-        for frame in animation_frames:
-            await message.edit_text(text=f"Получаю данные{frame}", reply_markup=None)
-            await asyncio.sleep(SLEEP_INTERVAL)
+    """Ожидает завершения конкретной задачи и возвращает результат."""
+    deadline = time.monotonic() + WAIT_TIMEOUT
+    last_ui_update = 0.0
+    frame_index = 0
 
-        # Проверка результата
+    while time.monotonic() < deadline:
         async with sessionmaker() as session:
-            job: Job | None = await session.scalar(
-                select(Job)
-                .where(
-                    and_(
-                        Job.bot_id == bot_id,
-                        Job.task == task_name,
-                    )
-                )
-                .order_by(Job.id.desc())
-                .limit(1)
-            )
+            job: Job | None = await session.get(Job, job_id)
 
-        if job and job.answer:
+        if job and job.bot_id == bot_id and job.answer:
             return job
 
-    # Превышено максимальное количество попыток
+        now = time.monotonic()
+        if now - last_ui_update >= UI_UPDATE_INTERVAL:
+            text = f"Получаю данные{SPINNER_FRAMES[frame_index]}"
+            with contextlib.suppress(Exception):
+                await message.edit_text(text=text, reply_markup=None)
+            frame_index = (frame_index + 1) % len(SPINNER_FRAMES)
+            last_ui_update = now
+
+        await asyncio.sleep(POLL_INTERVAL)
+
+    logger.warning(
+        "Timeout while waiting for job %s for bot_id=%s",
+        job_id,
+        bot_id,
+    )
     await message.edit_text(
         text=error_text,
         reply_markup=await ik_back(back_to="action_with_bot"),
@@ -95,14 +99,16 @@ async def add_job_to_get_processed_users(
     bot = await user.get_obj_bot(bot_id)
     job = Job(task=JobName.get_folders.value)
     bot.jobs.append(job)
+    await session.flush()
+    job_id = int(job.id)
     await session.commit()
 
     # Ожидание результата
     job_result = await _wait_for_job_completion(
         sessionmaker,
-        bot_id,
-        JobName.get_folders.value,
-        query.message,  # pyright: ignore
+        bot_id=bot_id,
+        job_id=job_id,
+        message=query.message,  # pyright: ignore
     )
 
     if not job_result:
@@ -176,15 +182,17 @@ async def get_processed_users_from_folder(
             task=JobName.processed_users.value, task_metadata=msgpack.packb(folders)
         )
         bot.jobs.append(job)
+        await session.flush()
+        job_id = int(job.id)
         await session.commit()
 
         # Ожидание результата с анимацией
         job_result = await _wait_for_job_completion(
             sessionmaker,
-            bot_id,
-            JobName.processed_users.value,
-            query.message,  # pyright: ignore
-            "Не смог получить папки",
+            bot_id=bot_id,
+            job_id=job_id,
+            message=query.message,  # pyright: ignore
+            error_text="Не смог получить папки",
         )
 
         if not job_result:
@@ -233,7 +241,7 @@ async def view_target_folder(
     # Формирование текста для отображения
     formatted_text = await fn.watch_processed_users(
         pinned_peers,  # pyright: ignore
-        sep,
+        se.sep,
         USERS_PER_PAGE,
         page,
         formatting_choices,
