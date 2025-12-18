@@ -35,7 +35,6 @@ class Settings:
 
     db: DBSettings = DBSettings()
     redis: RedisSettings = RedisSettings()
-    developer_id = os.environ.get("DEVELOPER_ID", "")
 
     def mysql_dsn(self) -> URL:
         return URL.create(

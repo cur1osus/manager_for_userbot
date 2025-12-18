@@ -25,7 +25,7 @@ from telethon.errors import (
 )
 from telethon.errors.rpcerrorlist import FloodWaitError
 
-from bot.db.mysql.models import MonitoringChat, UserAnalyzed
+from bot.db.models import MonitoringChat, UserAnalyzed
 from bot.settings import se
 
 logger = logging.getLogger(__name__)
@@ -73,9 +73,12 @@ class Function:
         if last_user_id is not None:
             conditions.append(UserAnalyzed.id > last_user_id)
 
-        query = select(UserAnalyzed).where(and_(*conditions)).order_by(
-            UserAnalyzed.id.asc()
-        ).limit(limit)
+        query = (
+            select(UserAnalyzed)
+            .where(and_(*conditions))
+            .order_by(UserAnalyzed.id.asc())
+            .limit(limit)
+        )
         users = await session.scalars(query)
 
         return list(users.all())
@@ -117,24 +120,26 @@ class Function:
     async def collapse_repeated_data(
         data: list[str], data_to_compare: list[str]
     ) -> list[str]:
-        data_to_compare = list(set(data_to_compare))
-        for i in data:
-            if i in data_to_compare:
-                data_to_compare.remove(i)
-        return data_to_compare
+        # Keep stable order (set() would randomize it).
+        unique = list(dict.fromkeys(data_to_compare))
+        to_remove = set(data)
+        return [item for item in unique if item not in to_remove]
 
     @staticmethod
     async def watch_data(
         data: list[str], sep: str, q_string_per_page: int, page: int
     ) -> str:
+        q = max(1, q_string_per_page)
         data_enumerate = list(enumerate(data))
-        data_ = data_enumerate[
-            (page - 1) * q_string_per_page : page * q_string_per_page
-        ]
-        s = "".join(f"{ind + 1}) {i}{sep}" for ind, i in data_)
-        if len(s) > Function.max_length_message:
-            return await Function.watch_data(data, sep, q_string_per_page - 1, page)
-        return s
+
+        while True:
+            data_ = data_enumerate[(page - 1) * q : page * q]
+            s = "".join(f"{ind + 1}) {item}{sep}" for ind, item in data_)
+
+            if len(s) <= Function.max_length_message or q == 1:
+                return s
+
+            q -= 1
 
     @staticmethod
     async def count_page(len_data: int, q_string_per_page: int) -> int:
@@ -148,21 +153,20 @@ class Function:
         q_string_per_page: int,
         page: int,
     ) -> str:
+        q = max(1, q_string_per_page)
         chats_enumerate = list(enumerate(chats))
-        chats_ = chats_enumerate[
-            (page - 1) * q_string_per_page : page * q_string_per_page
-        ]
-        s = "".join(
-            f"{ind + 1}) {i.chat_id} ({i.title or '🌀'}){sep}" for ind, i in chats_
-        )
-        if len(s) > Function.max_length_message:
-            return await Function.watch_data_chats(
-                chats,
-                sep,
-                q_string_per_page - 1,
-                page,
+
+        while True:
+            chats_ = chats_enumerate[(page - 1) * q : page * q]
+            s = "".join(
+                f"{ind + 1}) {chat.chat_id} ({chat.title or '🌀'}){sep}"
+                for ind, chat in chats_
             )
-        return s
+
+            if len(s) <= Function.max_length_message or q == 1:
+                return s
+
+            q -= 1
 
     @staticmethod
     async def watch_processed_users(
@@ -172,34 +176,49 @@ class Function:
         page: int,
         formatting: list[bool],
     ) -> str:
-        processed_users = processed_users[
-            (page - 1) * q_string_per_page : page * q_string_per_page
-        ]
-        first_name, username, copy = formatting
-        rows = []
-        for i in processed_users:
-            string = []
-            for name, value in i.items():
-                if name in ["id", "phone", "last_name"]:
-                    continue
-                if not username and name == "username":
-                    continue
-                if not first_name and name == "first_name":
-                    continue
-                if name == "username":
-                    value = f"@{value}" if value else "@нет"
-                else:
-                    value = value or "нет значения"
-                    value = value if copy else Code(value).as_html()
-                string.append(value)
-            string.reverse()
-            rows.append(" - ".join(string))
-        rows_str = "\n\n".join(rows)
-        if len(rows_str) > Function.max_length_message:
-            return await Function.watch_processed_users(
-                processed_users, sep, q_string_per_page - 1, page, formatting
-            )
-        return Code(rows_str).as_html() if copy else rows_str
+        q = max(1, q_string_per_page)
+
+        # Be tolerant to older state payloads.
+        first_name = formatting[0] if len(formatting) > 0 else True
+        username = formatting[1] if len(formatting) > 1 else True
+        copy = formatting[2] if len(formatting) > 2 else False
+
+        while True:
+            page_items = processed_users[(page - 1) * q : page * q]
+            rows: list[str] = []
+
+            for user in page_items:
+                parts: list[str] = []
+                for name, value in user.items():
+                    if name in {"id", "phone", "last_name"}:
+                        continue
+                    if not username and name == "username":
+                        continue
+                    if not first_name and name == "first_name":
+                        continue
+
+                    if name == "username":
+                        rendered = f"@{value}" if value else "@нет"
+                    else:
+                        if value is None or value == "":
+                            rendered_value = "нет значения"
+                        else:
+                            rendered_value = str(value)
+                        rendered = (
+                            rendered_value
+                            if copy
+                            else Code(str(rendered_value)).as_html()
+                        )
+                    parts.append(rendered)
+
+                parts.reverse()
+                rows.append(" - ".join(parts))
+
+            rows_str = "\n\n".join(rows)
+            if len(rows_str) <= Function.max_length_message or q == 1:
+                return Code(rows_str).as_html() if copy else rows_str
+
+            q -= 1
 
     class Manager:
         @staticmethod
@@ -288,7 +307,7 @@ class Function:
 
         @staticmethod
         def _is_valid_api_hash(api_hash: str) -> bool:
-            return isinstance(api_hash, str) and len(api_hash) == 32
+            return isinstance(api_hash, str) and len(api_hash.strip()) == 32
 
         @staticmethod
         def _is_valid_session_path(path: str) -> bool:
@@ -356,12 +375,15 @@ class Function:
                     return Result(success=True, message=None)
 
                 try:
-                    if password:
-                        await client.sign_in(password=password)
-                    else:
+                    try:
                         await client.sign_in(
                             phone=phone, code=code_str, phone_code_hash=phone_code_hash
                         )
+                    except SessionPasswordNeededError:
+                        if not password:
+                            logger.info("Требуется пароль 2FA для номера %s.", phone)
+                            return Result(success=False, message="password_required")
+                        await client.sign_in(password=password)
 
                     if await client.is_user_authorized():
                         me = await client.get_me()

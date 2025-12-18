@@ -25,3 +25,7 @@ class InfoState(StatesGroup):
 class BotState(StatesGroup):
     main = State()
     folders = State()
+
+
+class BotFolderState(StatesGroup):
+    enter_name = State()

@@ -11,7 +11,7 @@ from aiogram.types import FSInputFile
 from aiogram.types.reply_keyboard_remove import ReplyKeyboardRemove
 from aiogram.utils.media_group import MediaGroupBuilder
 
-from bot.db.mysql.models import UserManager
+from bot.db.models import UserManager
 from bot.keyboards.inline import ik_main_menu
 from bot.keyboards.reply import rk_cancel
 from bot.states.main import UserState

@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 TG_SERVICE_USER_ID: Final[int] = 777000
 
 
-class CheckUserMiddleware(BaseMiddleware):
+class ThrowUserMiddleware(BaseMiddleware):
     async def __call__(
         self,
         handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],

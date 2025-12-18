@@ -39,7 +39,11 @@ class Scheduler:
 
     async def run_all(self, delay_seconds: int = 0, *args, **kwargs):
         if delay_seconds:
-            warnings.warn("The `delay_seconds` parameter is deprecated.", DeprecationWarning, stacklevel=2)
+            warnings.warn(
+                "The `delay_seconds` parameter is deprecated.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         jobs = [asyncio.create_task(self._run_job(job)) for job in self.jobs[:]]
         if not jobs:
             return [], []
@@ -71,7 +75,7 @@ class Scheduler:
         return job
 
     async def _run_job(self, job: "Job"):
-        ret = await job.run()
+        await job.run()
 
     @property
     def get_next_run(self, tag: None | Hashable = None) -> None | datetime.datetime:
@@ -127,7 +131,10 @@ class Job:
         def is_repr(j):
             return not isinstance(j, Job)
 
-        timestats = "(last run: %s, next run: %s)" % (format_time(self.last_run), format_time(self.next_run))
+        timestats = "(last run: %s, next run: %s)" % (
+            format_time(self.last_run),
+            format_time(self.next_run),
+        )
         if hasattr(self.job_func, "__name__"):
             job_func_name = self.job_func.__name__
         else:
@@ -212,49 +219,63 @@ class Job:
     @property
     def monday(self):
         if self.interval != 1:
-            raise IntervalError("Scheduling .monday() jobs is only allowed for weekly jobs.")
+            raise IntervalError(
+                "Scheduling .monday() jobs is only allowed for weekly jobs."
+            )
         self.start_day = "monday"
         return self.weeks
 
     @property
     def tuesday(self):
         if self.interval != 1:
-            raise IntervalError("Scheduling .tuesday() jobs is only allowed for weekly jobs.")
+            raise IntervalError(
+                "Scheduling .tuesday() jobs is only allowed for weekly jobs."
+            )
         self.start_day = "tuesday"
         return self.weeks
 
     @property
     def wednesday(self):
         if self.interval != 1:
-            raise IntervalError("Scheduling .wednesday() jobs is only allowed for weekly jobs.")
+            raise IntervalError(
+                "Scheduling .wednesday() jobs is only allowed for weekly jobs."
+            )
         self.start_day = "wednesday"
         return self.weeks
 
     @property
     def thursday(self):
         if self.interval != 1:
-            raise IntervalError("Scheduling .thursday() jobs is only allowed for weekly jobs.")
+            raise IntervalError(
+                "Scheduling .thursday() jobs is only allowed for weekly jobs."
+            )
         self.start_day = "thursday"
         return self.weeks
 
     @property
     def friday(self):
         if self.interval != 1:
-            raise IntervalError("Scheduling .friday() jobs is only allowed for weekly jobs.")
+            raise IntervalError(
+                "Scheduling .friday() jobs is only allowed for weekly jobs."
+            )
         self.start_day = "friday"
         return self.weeks
 
     @property
     def saturday(self):
         if self.interval != 1:
-            raise IntervalError("Scheduling .saturday() jobs is only allowed for weekly jobs.")
+            raise IntervalError(
+                "Scheduling .saturday() jobs is only allowed for weekly jobs."
+            )
         self.start_day = "saturday"
         return self.weeks
 
     @property
     def sunday(self):
         if self.interval != 1:
-            raise IntervalError("Scheduling .sunday() jobs is only allowed for weekly jobs.")
+            raise IntervalError(
+                "Scheduling .sunday() jobs is only allowed for weekly jobs."
+            )
         self.start_day = "sunday"
         return self.weeks
 
@@ -266,7 +287,9 @@ class Job:
 
     def at(self, time_str: str, tz: None | str = None):
         if self.unit not in ("days", "hours", "minutes") and not self.start_day:
-            raise ScheduleValueError("Invalid unit (valid units are `days`, `hours`, and `minutes`)")
+            raise ScheduleValueError(
+                "Invalid unit (valid units are `days`, `hours`, and `minutes`)"
+            )
         if tz is not None:
             import pytz
 
@@ -275,18 +298,26 @@ class Job:
             elif isinstance(tz, pytz.BaseTzInfo):
                 self.at_time_zone = tz
             else:
-                raise ScheduleValueError("Timezone must be string or pytz.timezone object")
+                raise ScheduleValueError(
+                    "Timezone must be string or pytz.timezone object"
+                )
         if not isinstance(time_str, str):
             raise TypeError("at() should be passed a string")
         if self.unit == "days" or self.start_day:
             if not re.match(r"^[0-2]\d:[0-5]\d(:[0-5]\d)?$", time_str):
-                raise ScheduleValueError("Invalid time format for a daily job (valid format is HH:MM(:SS)?)")
+                raise ScheduleValueError(
+                    "Invalid time format for a daily job (valid format is HH:MM(:SS)?)"
+                )
         if self.unit == "hours":
             if not re.match(r"^([0-5]\d)?:[0-5]\d$", time_str):
-                raise ScheduleValueError("Invalid time format for an hourly job (valid format is (MM)?:SS)")
+                raise ScheduleValueError(
+                    "Invalid time format for an hourly job (valid format is (MM)?:SS)"
+                )
         if self.unit == "minutes":
             if not re.match(r"^:[0-5]\d$", time_str):
-                raise ScheduleValueError("Invalid time format for a minutely job (valid format is :SS)")
+                raise ScheduleValueError(
+                    "Invalid time format for a minutely job (valid format is :SS)"
+                )
         time_values = time_str.split(":")
         hour: str | int
         minute: str | int
@@ -306,7 +337,9 @@ class Job:
         if self.unit == "days" or self.start_day:
             hour = int(hour)
             if not (0 <= hour <= 23):
-                raise ScheduleValueError("Invalid number of hours ({} is not between 0 and 23)")
+                raise ScheduleValueError(
+                    "Invalid number of hours ({} is not between 0 and 23)"
+                )
         elif self.unit == "hours":
             hour = 0
         elif self.unit == "minutes":
@@ -322,27 +355,44 @@ class Job:
         self.latest = latest
         return self
 
-    def until(self, until_time: datetime.datetime | datetime.timedelta | datetime.time | str):
+    def until(
+        self, until_time: datetime.datetime | datetime.timedelta | datetime.time | str
+    ):
         if isinstance(until_time, datetime.datetime):
             self.cancel_after = until_time
         elif isinstance(until_time, datetime.timedelta):
             self.cancel_after = datetime.datetime.now() + until_time
         elif isinstance(until_time, datetime.time):
-            self.cancel_after = datetime.datetime.combine(datetime.datetime.now(), until_time)
+            self.cancel_after = datetime.datetime.combine(
+                datetime.datetime.now(), until_time
+            )
         elif isinstance(until_time, str):
             cancel_after = self._decode_datetimestr(
-                until_time, ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d", "%H:%M:%S", "%H:%M"],
+                until_time,
+                [
+                    "%Y-%m-%d %H:%M:%S",
+                    "%Y-%m-%d %H:%M",
+                    "%Y-%m-%d",
+                    "%H:%M:%S",
+                    "%H:%M",
+                ],
             )
             if cancel_after is None:
                 raise ScheduleValueError("Invalid string format for until()")
             if "-" not in until_time:
                 now = datetime.datetime.now()
-                cancel_after = cancel_after.replace(year=now.year, month=now.month, day=now.day)
+                cancel_after = cancel_after.replace(
+                    year=now.year, month=now.month, day=now.day
+                )
             self.cancel_after = cancel_after
         else:
-            raise TypeError("until() takes a string, datetime.datetime, datetime.timedelta, datetime.time parameter")
+            raise TypeError(
+                "until() takes a string, datetime.datetime, datetime.timedelta, datetime.time parameter"
+            )
         if self.cancel_after < datetime.datetime.now():
-            raise ScheduleValueError("Cannot schedule a job to run until a time in the past")
+            raise ScheduleValueError(
+                "Cannot schedule a job to run until a time in the past"
+            )
         return self
 
     def do(self, job_func: Callable, *args, **kwargs):
@@ -350,7 +400,9 @@ class Job:
         functools.update_wrapper(self.job_func, job_func)
         self._schedule_next_run()
         if self.scheduler is None:
-            raise ScheduleError("Unable to a add job to schedule. Job is not associated with an scheduler")
+            raise ScheduleError(
+                "Unable to a add job to schedule. Job is not associated with an scheduler"
+            )
         self.scheduler.jobs.append(self)
         return self
 
@@ -399,7 +451,9 @@ class Job:
             next_run += period
         while next_run <= now:
             next_run += period
-        next_run = self._correct_utc_offset(next_run, fixate_time=(self.at_time is not None))
+        next_run = self._correct_utc_offset(
+            next_run, fixate_time=(self.at_time is not None)
+        )
         if self.at_time_zone is not None:
             next_run = next_run.astimezone()
             next_run = next_run.replace(tzinfo=None)
@@ -417,7 +471,9 @@ class Job:
         moment = self._correct_utc_offset(moment, fixate_time=True)
         return moment
 
-    def _correct_utc_offset(self, moment: datetime.datetime, fixate_time: bool) -> datetime.datetime:
+    def _correct_utc_offset(
+        self, moment: datetime.datetime, fixate_time: bool
+    ) -> datetime.datetime:
         if self.at_time_zone is None:
             return moment
         offset_before_normalize = moment.utcoffset()
@@ -437,7 +493,9 @@ class Job:
     def _is_overdue(self, when: datetime.datetime):
         return self.cancel_after is not None and when > self.cancel_after
 
-    def _decode_datetimestr(self, datetime_str: str, formats: list[str]) -> None | datetime.datetime:
+    def _decode_datetimestr(
+        self, datetime_str: str, formats: list[str]
+    ) -> None | datetime.datetime:
         for f in formats:
             try:
                 return datetime.datetime.strptime(datetime_str, f)
@@ -499,7 +557,15 @@ def _move_to_next_weekday(moment: datetime.datetime, weekday: str):
 
 
 def _weekday_index(day: str) -> int:
-    weekdays = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+    weekdays = (
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday",
+    )
     if day not in weekdays:
         raise ScheduleValueError(f"Invalid start day (valid start days are {weekdays})")
     return weekdays.index(day)

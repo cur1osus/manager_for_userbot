@@ -8,28 +8,22 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from bot.db.mysql.models import (
-    Bot,
-    Job,
-    JobName,
-    MonitoringChat,
+from bot.db.models import Bot, Job, JobName, MonitoringChat
+from bot.keyboards.factories import (
+    ArrowInfoFactory,
+    BackFactory,
+    CancelFactory,
+    DeleteInfoFactory,
+    InfoFactory,
 )
-from bot.states.main import BotState, InfoState
 from bot.keyboards.inline import (
     ik_action_with_bot,
     ik_add_or_delete,
     ik_cancel_action,
     ik_num_matrix_del,
 )
-from bot.keyboards.factories import (
-    CancelFactory,
-    DeleteInfoFactory,
-    InfoFactory,
-    ArrowInfoFactory,
-    BackFactory,
-)
+from bot.states.main import BotState, InfoState
 from bot.utils import fn
-from config import sep
 
 if TYPE_CHECKING:
     pass

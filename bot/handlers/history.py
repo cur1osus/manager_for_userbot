@@ -9,15 +9,9 @@ from aiogram.types import CallbackQuery
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bot.db.mysql.models import (
-    UserAnalyzed,
-    UserManager,
-)
+from bot.db.models import UserAnalyzed, UserManager
 from bot.keyboards.factories import ArrowHistoryFactory
-from bot.keyboards.inline import (
-    ik_back,
-    ik_history_back,
-)
+from bot.keyboards.inline import ik_back, ik_history_back
 from bot.utils import fn
 
 if TYPE_CHECKING:

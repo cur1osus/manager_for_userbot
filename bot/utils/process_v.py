@@ -1,116 +1,207 @@
-from glob import glob
-import os
+from __future__ import annotations
+
+import logging
+import shutil
+from functools import lru_cache
+from pathlib import Path
+from typing import Final, NamedTuple
 
 import cv2
 import numpy as np
-import logging
-
-input_folder = "./images_v"
-output_dir = "./result_images_v"
-
-vykupili = cv2.imread("./vu.png")
-otkazalis_template = cv2.imread("./ot.png", cv2.IMREAD_GRAYSCALE)
-oh, ow = otkazalis_template.shape
-
-os.makedirs(output_dir, exist_ok=True)
-os.makedirs(input_folder, exist_ok=True)
 
 logger = logging.getLogger(__name__)
 
+ASSETS_DIR: Final[Path] = Path(__file__).resolve().parent / "assets"
+INPUT_DIR: Final[Path] = Path("images_v")
+OUTPUT_DIR: Final[Path] = Path("result_images_v")
+PNG_GLOB: Final[str] = "*.[Pp][Nn][Gg]"
+TEMPLATE_THRESHOLD: Final[float] = 0.8
 
-def get_paths():
-    return glob(os.path.join(input_folder, "*.[Pp][Nn][Gg]"))
+# Backward-compatible aliases (some code may rely on these names).
+input_folder: Final[str] = str(INPUT_DIR)
+output_dir: Final[str] = str(OUTPUT_DIR)
 
 
-def _process_image_v(img_path: str):
+def _ensure_dirs() -> None:
+    INPUT_DIR.mkdir(parents=True, exist_ok=True)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+
+_ensure_dirs()
+
+
+def get_paths() -> list[str]:
+    _ensure_dirs()
+    return sorted(str(p) for p in INPUT_DIR.glob(PNG_GLOB))
+
+
+class _Assets(NamedTuple):
+    vykupili: np.ndarray
+    otkazalis_template: np.ndarray
+    template_h: int
+    template_w: int
+
+
+def _resolve_asset(name: str) -> Path:
+    candidates = [
+        ASSETS_DIR / name,
+        Path.cwd() / name,  # legacy location
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return ASSETS_DIR / name
+
+
+@lru_cache(maxsize=1)
+def _load_assets() -> _Assets | None:
+    vykupili_path = _resolve_asset("vu.png")
+    template_path = _resolve_asset("ot.png")
+
+    vykupili = cv2.imread(str(vykupili_path), cv2.IMREAD_COLOR)
+    if vykupili is None:
+        logger.error("Не удалось загрузить ассет 'vu.png': %s", vykupili_path)
+        return None
+
+    otkazalis_template = cv2.imread(str(template_path), cv2.IMREAD_GRAYSCALE)
+    if otkazalis_template is None:
+        logger.error("Не удалось загрузить ассет 'ot.png': %s", template_path)
+        return None
+
+    template_h, template_w = otkazalis_template.shape[:2]
+    return _Assets(
+        vykupili=vykupili,
+        otkazalis_template=otkazalis_template,
+        template_h=template_h,
+        template_w=template_w,
+    )
+
+
+def _copy_to_output(img_path: str) -> None:
+    output_path = OUTPUT_DIR / Path(img_path).name
+    try:
+        shutil.copy2(img_path, output_path)
+    except OSError as exc:
+        logger.warning("Не удалось сохранить результат %s: %s", output_path, exc)
+
+
+def _process_image_v(img_path: str) -> bool:
+    assets = _load_assets()
+    if assets is None:
+        _copy_to_output(img_path)
+        return False
+
     img = cv2.imread(img_path)
+    if img is None:
+        logger.info("Не удалось загрузить: %s", img_path)
+        return False
 
-    # 2. Ищем плашку "ОТКАЗАЛИСЬ"
     img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    res = cv2.matchTemplate(img_gray, otkazalis_template, cv2.TM_CCOEFF_NORMED)
-    threshold = 0.8
-    loc = np.where(res >= threshold)
+    if img_gray.shape[0] < assets.template_h or img_gray.shape[1] < assets.template_w:
+        _copy_to_output(img_path)
+        return False
 
-    for pt in zip(*loc[::-1]):
-        # Масштабируем плашку "ВЫКУПИЛИ" под размер найденной области
-        resized_vykupili = cv2.resize(vykupili, (ow, oh))
+    res = cv2.matchTemplate(img_gray, assets.otkazalis_template, cv2.TM_CCOEFF_NORMED)
+    loc = np.where(res >= TEMPLATE_THRESHOLD)
 
-        # Полностью заменяем область
-        img[pt[1] : pt[1] + oh, pt[0] : pt[0] + ow] = resized_vykupili
+    for x, y in zip(*loc[::-1]):
+        resized_vykupili = cv2.resize(
+            assets.vykupili, (assets.template_w, assets.template_h)
+        )
+        img[y : y + assets.template_h, x : x + assets.template_w] = resized_vykupili
 
-    # 3. Сохраняем результат
-    path = os.path.join(output_dir, f"{img_path.split('/')[-1]}")
-    cv2.imwrite(path, img)
+    cv2.imwrite(str(OUTPUT_DIR / Path(img_path).name), img)
+    return True
 
 
-def init_source_v(scale=1.1):
-    h_orig, w_orig = vykupili.shape[:2]
-    new_w = int(w_orig * scale)
-    new_h = int(h_orig * scale)
+def init_source_v(scale: float = 1.1) -> tuple[np.ndarray, int, int]:
+    assets = _load_assets()
+    if assets is None:
+        logger.error("Не удалось инициализировать плашку: отсутствуют ассеты.")
+        return np.empty((0, 0, 3), dtype=np.uint8), 0, 0
+
+    if scale <= 0:
+        logger.warning("Некорректный scale=%s, использую 1.0", scale)
+        scale = 1.0
+
+    h_orig, w_orig = assets.vykupili.shape[:2]
+    new_w = max(1, int(w_orig * scale))
+    new_h = max(1, int(h_orig * scale))
 
     if scale == 1.0:
-        resized_vykupili = vykupili.copy()
+        resized_vykupili = assets.vykupili.copy()
     else:
         interp = cv2.INTER_CUBIC if scale > 1.0 else cv2.INTER_AREA
-        resized_vykupili = cv2.resize(vykupili, (new_w, new_h), interpolation=interp)
+        resized_vykupili = cv2.resize(
+            assets.vykupili,
+            (new_w, new_h),
+            interpolation=interp,
+        )
 
     return resized_vykupili, new_h, new_w
 
 
 def process_image_v(
-    resized_vykupili,
-    new_h,
-    new_w,
-    img_path,
-    y_offset=-5,
-):
-    """
-    :param scale: масштабирование плашки "ВЫКУПИЛИ"
-    :param y_offset: смещение по вертикали (в пикселях).
-                     Отрицательное — вверх, положительное — вниз.
-    """
+    resized_vykupili: np.ndarray,
+    new_h: int,
+    new_w: int,
+    img_path: str,
+    y_offset: int = -5,
+) -> bool:
+    """Заменяет найденную плашку «ОТКАЗАЛИСЬ» на «ВЫКУПИЛИ» и сохраняет файл в `result_images_v/`."""
+
+    assets = _load_assets()
+    if assets is None or new_h <= 0 or new_w <= 0 or resized_vykupili.size == 0:
+        _copy_to_output(img_path)
+        return False
 
     img = cv2.imread(img_path)
     if img is None:
-        logger.info(f"Не удалось загрузить: {img_path}")
-        return
+        logger.info("Не удалось загрузить: %s", img_path)
+        return False
 
     img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    res = cv2.matchTemplate(img_gray, otkazalis_template, cv2.TM_CCOEFF_NORMED)
-    threshold = 0.8
-    loc = np.where(res >= threshold)
+    if img_gray.shape[0] < assets.template_h or img_gray.shape[1] < assets.template_w:
+        _copy_to_output(img_path)
+        return False
 
-    for pt in zip(*loc[::-1]):
-        x, y = pt  # левый верхний угол "ОТКАЗАЛИСЬ"
-        h_template = oh
+    res = cv2.matchTemplate(img_gray, assets.otkazalis_template, cv2.TM_CCOEFF_NORMED)
+    loc = np.where(res >= TEMPLATE_THRESHOLD)
 
-        # --- 1. Закрашиваем "ОТКАЗАЛИСЬ" ---
-        cv2.rectangle(img, (x, y), (x + ow, y + h_template), (255, 255, 255), -1)
+    for x, y in zip(*loc[::-1]):
+        cv2.rectangle(
+            img,
+            (x, y),
+            (x + assets.template_w, y + assets.template_h),
+            (255, 255, 255),
+            -1,
+        )
 
-        # --- 2. Вычисляем позицию для "ВЫКУПИЛИ" ---
         vx1 = x
         vx2 = x + new_w
 
-        # Центрируем по высоте, затем применяем смещение
-        vy_center = y + (h_template - new_h) // 2
-        vy1 = vy_center + y_offset  # смещение: + вниз, - вверх
+        vy_center = y + (assets.template_h - new_h) // 2
+        vy1 = vy_center + y_offset
         vy2 = vy1 + new_h
 
-        # --- 3. Проверка границ ---
         if vx2 > img.shape[1] or vy2 > img.shape[0] or vx1 < 0 or vy1 < 0:
-            logger.info(f"Не удалось вставить: {img_path}")
+            logger.info("Не удалось вставить плашку (границы): %s", img_path)
             continue
 
-        # --- 4. Вставляем ---
         img[vy1:vy2, vx1:vx2] = resized_vykupili
 
-    # Сохраняем
-    filename = os.path.basename(img_path)
-    cv2.imwrite(os.path.join(output_dir, filename), img)
+    cv2.imwrite(str(OUTPUT_DIR / Path(img_path).name), img)
+    return True
 
 
-def clear_dirs_v():
-    for file in os.listdir(output_dir):
-        os.remove(os.path.join(output_dir, file))
-    for file in os.listdir(input_folder):
-        os.remove(os.path.join(input_folder, file))
+def clear_dirs_v() -> None:
+    for folder in (OUTPUT_DIR, INPUT_DIR):
+        if not folder.exists():
+            continue
+        for file_path in folder.iterdir():
+            if not file_path.is_file():
+                continue
+            try:
+                file_path.unlink()
+            except OSError as exc:
+                logger.debug("Не удалось удалить %s: %s", file_path, exc)

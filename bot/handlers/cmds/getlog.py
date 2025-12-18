@@ -10,7 +10,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.utils.formatting import Code
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from bot.db.mysql.models import Bot, UserManager
+from bot.db.models import Bot, UserManager
 from bot.states import UserState
 from bot.utils import fn
 

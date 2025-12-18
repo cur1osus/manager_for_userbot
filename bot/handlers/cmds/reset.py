@@ -7,7 +7,7 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 
-from bot.db.mysql.models import UserManager
+from bot.db.models import UserManager
 from bot.utils import fn
 
 if TYPE_CHECKING:

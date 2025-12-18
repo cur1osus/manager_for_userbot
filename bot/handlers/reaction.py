@@ -10,10 +10,9 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, MessageReactionUpdated
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bot.db.mysql import BannedUser, UserAnalyzed, UserBot, UserManager
-from bot.keyboards.inline import (
-    ik_tool_for_not_accepted_message,
-)
+from bot.db.models import BannedUser, UserAnalyzed, UserManager
+from bot.db.models import Bot as UserBot
+from bot.keyboards.inline import ik_tool_for_not_accepted_message
 from bot.utils import fn
 
 if TYPE_CHECKING:

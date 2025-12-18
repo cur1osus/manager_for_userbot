@@ -4,14 +4,18 @@ from typing import Final
 from aiogram.types import InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from bot.db.mysql.models import Bot, UserManager
+from bot.db.models import Bot, BotFolder, UserManager
 
 from .factories import (
     ArrowFoldersFactory,
     ArrowHistoryFactory,
     ArrowInfoFactory,
     BackFactory,
+    BotAddFactory,
     BotFactory,
+    BotFolderDeleteFactory,
+    BotFolderFactory,
+    BotMoveToFolderFactory,
     CancelFactory,
     DeleteInfoFactory,
     FolderFactory,
@@ -27,7 +31,7 @@ logger = logging.getLogger(__name__)
 async def ik_main_menu(user: UserManager) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text=f"👥 Боты [{len(user.bots)}]", callback_data="bots")
-    builder.button(text="❇️ Добавить бота", callback_data="add_new_bot")
+    # builder.button(text="❇️ Добавить бота", callback_data="add_new_bot")
     builder.button(text="❌ Игноры", callback_data=InfoFactory(key="ignore"))
     builder.button(text="🚷 Баны", callback_data=InfoFactory(key="ban"))
     builder.button(text="❗️Тригеры", callback_data=InfoFactory(key="keyword"))
@@ -41,20 +45,51 @@ async def ik_main_menu(user: UserManager) -> InlineKeyboardMarkup:
         callback_data="users_per_minute",
     )
     builder.button(text="🔍 История", callback_data="history")
-    builder.adjust(2, 2, 2, 1)
+    builder.adjust(1, 2, 2, 1)
     return builder.as_markup()
 
 
 async def ik_available_bots(
-    bots_data: list[Bot], back_to: str = "default"
+    bots_data: list[Bot],
+    back_to: str = "default",
+    delete_folder_id: int | None = None,
+    add_to_folder_id: int | None = None,
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+    if add_to_folder_id is not None:
+        builder.button(
+            text="➕ Добавить аккаунт",
+            callback_data=BotAddFactory(folder_id=add_to_folder_id),
+        )
+    if delete_folder_id is not None:
+        builder.button(
+            text="🗑 Удалить папку",
+            callback_data=BotFolderDeleteFactory(id=delete_folder_id),
+        )
     if bots_data:
         for bot in bots_data:
             builder.button(
                 text=f"{'❇️' if bot.is_connected else '⛔️'} {'🟢' if bot.is_started else '🔴'} {bot.phone} ({bot.name or '🌀'}) [{bot.id}]",
                 callback_data=BotFactory(id=bot.id),
             )
+    builder.button(text="<-", callback_data=BackFactory(to=back_to))
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+async def ik_bot_folder_list(
+    folders: list[BotFolder],
+    back_to: str = "default",
+) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="➕ Создать папку", callback_data="bots_create_folder")
+    builder.button(text="📦 Все боты", callback_data="bots_all")
+    # builder.button(text="📂 Без папки", callback_data="bots_no_folder")
+    for folder in folders:
+        builder.button(
+            text=f"📁 {folder.name}",
+            callback_data=BotFolderFactory(id=folder.id),
+        )
     builder.button(text="<-", callback_data=BackFactory(to=back_to))
     builder.adjust(1)
     return builder.as_markup()
@@ -70,8 +105,9 @@ async def ik_action_with_bot(back_to: str = "default") -> InlineKeyboardMarkup:
         text="🗂 Получить Папки",
         callback_data="processed_users",
     )
+    builder.button(text="📂 Переместить", callback_data="move_bot_folder")
     builder.button(text="<-", callback_data=BackFactory(to=back_to))
-    builder.adjust(1, 2, 1, 1)
+    builder.adjust(1, 2, 2, 1, 1)
     return builder.as_markup()
 
 
@@ -211,6 +247,7 @@ async def ik_connect_bot(back_to: str = "default") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="🗑 Удалить", callback_data="delete")
     builder.button(text="❇️ Подключить", callback_data="connect")
+    builder.button(text="📂 Переместить в папку", callback_data="move_bot_folder")
     builder.button(text="<-", callback_data=BackFactory(to=back_to))
     builder.adjust(1)
     return builder.as_markup()
@@ -243,6 +280,28 @@ async def ik_folders_with_users(
             )
     builder.button(text="<-", callback_data=BackFactory(to=back_to))
     builder.adjust(2)
+    return builder.as_markup()
+
+
+async def ik_move_bot_folders(
+    folders: list[BotFolder],
+    current_folder_id: int | None,
+    back_to: str = "bot_actions",
+) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    no_folder_checked = current_folder_id is None
+    builder.button(
+        text=f"Без папки{' 🔘' if no_folder_checked else ''}",
+        callback_data=BotMoveToFolderFactory(id=0),
+    )
+    for folder in folders:
+        is_current = folder.id == current_folder_id
+        builder.button(
+            text=f"{folder.name}{' 🔘' if is_current else ''}",
+            callback_data=BotMoveToFolderFactory(id=folder.id),
+        )
+    builder.button(text="<-", callback_data=BackFactory(to=back_to))
+    builder.adjust(1)
     return builder.as_markup()
 
 

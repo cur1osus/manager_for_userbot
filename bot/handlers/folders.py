@@ -11,18 +11,14 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from bot.db.models import Job, JobName, UserManager
 from bot.keyboards.factories import (
     ArrowFoldersFactory,
     BackFactory,
     FolderFactory,
     FolderGetFactory,
     FormattingFactory,
-)
-
-from bot.db.mysql.models import (
-    Job,
-    JobName,
-    UserManager,
 )
 from bot.keyboards.inline import (
     ik_action_with_bot,
@@ -33,8 +29,6 @@ from bot.keyboards.inline import (
 )
 from bot.states.main import BotState
 from bot.utils import fn
-from config import sep
-
 
 router = Router()
 logger = logging.getLogger(__name__)

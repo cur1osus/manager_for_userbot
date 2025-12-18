@@ -62,6 +62,7 @@ dependencies = [
   "pillow>=11.3.0",
   "pytesseract>=0.3.13",
   "cachetools>=6.1.0",
+  "isort>=7.0.0",
 ]
 
 [tool.pyright]

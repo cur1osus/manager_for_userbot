@@ -9,7 +9,8 @@ from aiogram.fsm.context import FSMContext
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bot.db.mysql import UserAnalyzed, UserBot, UserManager
+from bot.db.models import Bot as UserBot
+from bot.db.models import UserAnalyzed, UserManager
 
 if TYPE_CHECKING:
     from aiogram.types import Message
@@ -31,8 +32,8 @@ async def stat_cmd(
     r = await session.execute(
         select(UserAnalyzed).where(
             and_(
-                UserAnalyzed.sended == False,
-                UserAnalyzed.accepted == True,
+                not UserAnalyzed.sended,
+                UserAnalyzed.accepted,
             )
         )
     )

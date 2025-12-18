@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from aiogram import Router
 from aiogram.filters import CommandObject, CommandStart
 
-from bot.db.mysql.models import UserManager
+from bot.db.models import UserManager
 from bot.keyboards.inline import ik_main_menu
 from bot.utils import fn
 

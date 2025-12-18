@@ -3,7 +3,8 @@
 set -euo pipefail
 
 # === Настройки ===
-PROJECT_DIR="/home/max/Desktop/userbot"
+# Можно переопределить каталог с userbot через USERBOT_PROJECT_DIR
+PROJECT_DIR="${USERBOT_PROJECT_DIR:-/home/max/Desktop/userbot}"
 MANAGER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 SESSION_PATH="${1:-}"
@@ -46,7 +47,7 @@ cd "$PROJECT_DIR" || {
 unset VIRTUAL_ENV
 
 # Запускаем в фоне с помощью nohup
-nohup uv run main.py "$PHONE" \
+nohup uv run -m bot "$SESSION_PATH" "$API_ID" "$API_HASH" \
     >> "$LOG_FILE" 2>&1 &
 
 # Сохраняем PID фонового процесса

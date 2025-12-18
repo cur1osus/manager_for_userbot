@@ -7,11 +7,9 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
 
-from bot.db.mysql.models import UserManager
+from bot.db.models import UserManager
 from bot.keyboards.factories import BackFactory
-from bot.keyboards.inline import (
-    ik_main_menu,
-)
+from bot.keyboards.inline import ik_main_menu
 from bot.utils import fn
 
 if TYPE_CHECKING:

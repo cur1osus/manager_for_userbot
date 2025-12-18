@@ -1,14 +1,23 @@
 from enum import Enum
 
-from sqlalchemy import (
-    BigInteger,
-    ForeignKey,
-    String,
-)
+from sqlalchemy import BigInteger, ForeignKey, String
 from sqlalchemy.dialects.mysql import BLOB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
+
+
+class BotFolder(Base):
+    __tablename__ = "bot_folders"
+
+    name: Mapped[str] = mapped_column(String(100))
+    user_manager_id: Mapped[int] = mapped_column(
+        ForeignKey("user_managers.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    manager: Mapped["UserManager"] = relationship(back_populates="folders")
+    bots: Mapped[list["Bot"]] = relationship(back_populates="folder")
 
 
 class Bot(Base):
@@ -18,6 +27,11 @@ class Bot(Base):
         ForeignKey("user_managers.id"), nullable=False
     )
     manager: Mapped["UserManager"] = relationship(back_populates="bots")
+    folder_id: Mapped[int | None] = mapped_column(
+        ForeignKey("bot_folders.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    folder: Mapped["BotFolder | None"] = relationship(back_populates="bots")
     chats: Mapped[list["MonitoringChat"]] = relationship(
         back_populates="bot", lazy="selectin", cascade="all, delete-orphan"
     )
@@ -145,6 +159,11 @@ class UserManager(Base):
             Bot.is_connected.desc(),
             Bot.is_started.desc(),
         ],
+        cascade="all, delete-orphan",
+    )
+    folders: Mapped[list["BotFolder"]] = relationship(
+        back_populates="manager",
+        lazy="selectin",
         cascade="all, delete-orphan",
     )
     keywords: Mapped[list["KeyWord"]] = relationship(

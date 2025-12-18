@@ -8,13 +8,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from bot.db.mysql.models import (
-    BannedUser,
-    IgnoredWord,
-    KeyWord,
-    MessageToAnswer,
-    UserManager,
-)
+from bot.db.models import BannedUser, IgnoredWord, KeyWord, MessageToAnswer, UserManager
 from bot.keyboards.factories import (
     ArrowInfoFactory,
     BackFactory,
@@ -28,9 +22,9 @@ from bot.keyboards.inline import (
     ik_main_menu,
     ik_num_matrix_del,
 )
+from bot.settings import se
 from bot.states.main import InfoState
 from bot.utils import fn
-from config import sep
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -93,7 +87,7 @@ async def data_info_to_string(
     current_page = current_page or all_page
     data_str = await fn.watch_data(
         data,
-        sep,
+        se.sep,
         q_string_per_page,
         current_page,
     )
@@ -197,7 +191,7 @@ async def processing_message_to_add(
     state: FSMContext,
     session: AsyncSession,
 ) -> None:
-    data_to_add = [i.strip() for i in message.text.split(sep) if i]
+    data_to_add = [i.strip() for i in message.text.split(se.sep) if i]
     type_data = (await state.get_data())["type_data"]
     match type_data:
         case "answer":

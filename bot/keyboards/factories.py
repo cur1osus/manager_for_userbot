@@ -25,6 +25,22 @@ class BotFactory(CallbackData, prefix="b"):
     id: int
 
 
+class BotFolderFactory(CallbackData, prefix="bf"):
+    id: int
+
+
+class BotFolderDeleteFactory(CallbackData, prefix="bfd"):
+    id: int
+
+
+class BotAddFactory(CallbackData, prefix="ba"):
+    folder_id: int
+
+
+class BotMoveToFolderFactory(CallbackData, prefix="bmf"):
+    id: int
+
+
 class FolderFactory(CallbackData, prefix="f"):
     name: str
 

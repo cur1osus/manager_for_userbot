@@ -10,14 +10,16 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import any_state
 from aiogram.types import CallbackQuery
 from aiogram.types.reply_keyboard_remove import ReplyKeyboardRemove
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from bot.db.mysql.models import Bot, Job, JobName, UserManager
+from bot.db.models import Bot, BotFolder, Job, JobName, UserManager
+from bot.keyboards.factories import BotAddFactory
 from bot.keyboards.inline import ik_main_menu
 from bot.keyboards.reply import rk_cancel
+from bot.settings import se
 from bot.states import UserState
 from bot.utils import fn
-from bot.settings import se
 
 if TYPE_CHECKING:
     from aiogram.types import Message
@@ -25,6 +27,17 @@ if TYPE_CHECKING:
 
 router = Router()
 logger = logging.getLogger(__name__)
+
+
+async def _start_bot_registration(
+    query: CallbackQuery,
+    state: FSMContext,
+    folder_id: int | None,
+) -> None:
+    await state.update_data(new_bot_folder_id=folder_id, save_bot=True)
+    await query.message.delete()
+    await query.message.answer("Введите api_id", reply_markup=await rk_cancel())
+    await state.set_state(UserState.enter_api_id)
 
 
 @router.message(any_state, F.text == "Отмена")
@@ -45,9 +58,19 @@ async def cancel_reg(
 async def process_add_new_bot(
     query: CallbackQuery, user: UserManager, redis: Redis, state: FSMContext
 ) -> None:
-    await query.message.delete()
-    await query.message.answer("Введите api_id", reply_markup=await rk_cancel())
-    await state.set_state(UserState.enter_api_id)
+    await _start_bot_registration(query, state, folder_id=None)
+
+
+@router.callback_query(BotAddFactory.filter())
+async def process_add_new_bot_in_folder(
+    query: CallbackQuery,
+    callback_data: BotAddFactory,
+    user: UserManager,
+    redis: Redis,
+    state: FSMContext,
+) -> None:
+    folder_id = callback_data.folder_id or None
+    await _start_bot_registration(query, state, folder_id=folder_id)
 
 
 @router.message(UserState.enter_api_id)
@@ -151,15 +174,32 @@ async def process_enter_code(
         await fn.state_clear(state)
         return
 
+    folder_name: str | None = None
     save_bot = data.get("save_bot", True)
     bot_id = data.get("bot_id")
     if save_bot:
+        target_folder_id: int | None = None
+        folder_id = data.get("new_bot_folder_id")
+        if folder_id is not None:
+            folder = await session.scalar(
+                select(BotFolder).where(
+                    BotFolder.id == folder_id,
+                    BotFolder.user_manager_id == user.id,
+                )
+            )
+            if folder:
+                target_folder_id = folder.id
+                folder_name = folder.name
+            else:
+                await message.answer("Папка не найдена, бот будет без папки")
+
         bot = Bot(
             api_id=api_id_int,
             api_hash=api_hash,
             phone=phone,
             path_session=path_session,
             is_connected=True,
+            folder_id=target_folder_id,
         )
         job = Job(task=JobName.get_me_name.value)
         jobs = await bot.awaitable_attrs.jobs
@@ -181,10 +221,11 @@ async def process_enter_code(
         bot.path_session = path_session
         await session.commit()
 
-    asyncio.create_task(
-        fn.Manager.start_bot(phone, path_session, api_id_int, api_hash)
-    )
-    await message.answer("Бот подключен и запущен", reply_markup=ReplyKeyboardRemove())
+    asyncio.create_task(fn.Manager.start_bot(phone, path_session, api_id_int, api_hash))
+    status_text = "Бот подключен и запущен"
+    if folder_name:
+        status_text += f"\nПапка: {folder_name}"
+    await message.answer(status_text, reply_markup=ReplyKeyboardRemove())
     await fn.state_clear(state)
     msg = await message.answer("Главное меню", reply_markup=await ik_main_menu(user))
     await fn.set_general_message(state, msg)

@@ -17,15 +17,15 @@ from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.types import BotCommand
 from sqlalchemy.orm.session import sessionmaker
 
-from bot import errors, handlers
-from bot.background_jobs import (
+from bot import handlers
+from bot.background_tasks import (
     antiflood_pack_users,
     handle_job_from_userbot,
     send_not_accepted_posts,
 )
-from bot.db.mysql.base import close_db, create_db_session_pool, init_db
-from bot.middlewares.check_user_middleware import CheckUserMiddleware
-from bot.middlewares.db_session import DBSessionMiddleware
+from bot.db.base import close_db, create_db_session_pool, init_db
+from bot.middlewares.throw_session import DBSessionMiddleware
+from bot.middlewares.throw_user import ThrowUserMiddleware
 from bot.scheduler import default_scheduler as scheduler
 from bot.scheduler import logger as scheduler_logger
 from bot.settings import Settings
@@ -53,7 +53,7 @@ async def startup(
         {"sessionmaker": db_session, "db_session_closer": partial(close_db, engine)}
     )
     dispatcher.update.outer_middleware(DBSessionMiddleware(session_pool=db_session))
-    dispatcher.update.outer_middleware(CheckUserMiddleware())
+    dispatcher.update.outer_middleware(ThrowUserMiddleware())
 
     asyncio.create_task(
         start_scheduler(
@@ -130,15 +130,12 @@ async def main() -> None:
         events_isolation=SimpleEventIsolation(),
         settings=settings,
         redis=storage.redis,
-        developer_id=settings.developer_id,
     )
 
-    dp.include_routers(handlers.router, errors.router)
+    dp.include_routers(handlers.router)
     dp.startup.register(startup)
     dp.shutdown.register(shutdown)
     await set_default_commands(bot)
-
-    # dp.workflow_data.update({"scheduler": scheduler})
 
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
 

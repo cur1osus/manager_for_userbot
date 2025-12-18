@@ -3,13 +3,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.dialects.sqlite import INTEGER
-from sqlalchemy.ext.asyncio import (
-    AsyncAttrs,
-    AsyncEngine,
-    AsyncSession,
-    async_sessionmaker,
-    create_async_engine,
-)
+from sqlalchemy.ext.asyncio import (AsyncAttrs, AsyncEngine, AsyncSession,
+                                    async_sessionmaker, create_async_engine)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 if TYPE_CHECKING:

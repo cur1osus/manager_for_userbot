@@ -1,288 +1,372 @@
+from __future__ import annotations
+
 import datetime
 import logging
 import os
 import re
+import shutil
+import sys
 from glob import glob
-from sys import platform
+from pathlib import Path
+from typing import Final
 
 import cv2
 import pytesseract
 from PIL import Image, ImageDraw, ImageFont
 
-if platform == "linux" or platform == "linux2":
-    pytesseract.pytesseract.tesseract_cmd = r"/usr/bin/tesseract"
-elif platform == "win32":
-    tessdata_dir_config = '--tessdata-dir "C:/Program Files/Tesseract-OCR/tessdata"'
-    pytesseract.pytesseract.tesseract_cmd = (
-        r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-    )
-
-font_path = "hr.ttf"
-font_size = 46.5
-input_folder = "./images_d"
-output_dir = "./result_images_d"
-os.makedirs(output_dir, exist_ok=True)
-
 logger = logging.getLogger(__name__)
 
-# Универсальные PSM режимы
-psm_modes = [6, 7, 8, 13]
+ASSETS_DIR: Final[Path] = Path(__file__).resolve().parent / "assets"
+INPUT_DIR: Final[Path] = Path("images_d")
+OUTPUT_DIR: Final[Path] = Path("result_images_d")
+PNG_GLOB: Final[str] = "*.[Pp][Nn][Gg]"
 
-# Масштаб для детекции мелкого текста
-_f_v2 = 3.0
-_f = 3.0
+# Backward-compatible aliases (some code may rely on these names).
+input_folder: Final[str] = str(INPUT_DIR)
+output_dir: Final[str] = str(OUTPUT_DIR)
 
-# Проверка шрифта
-try:
-    font = ImageFont.truetype(font_path, font_size)
-except:
-    font = ImageFont.load_default()
+FONT_SIZE: Final[float] = 46.5
+PSM_MODES: Final[list[int]] = [6, 7, 8, 13]
+
+SCALE_V2: Final[float] = 3.0
+SCALE_V1: Final[float] = 3.0
+
+DATE_DDMMYYYY_RE: Final[re.Pattern[str]] = re.compile(r"\b(\d{2})(\d{2})(\d{4})\b")
+RETURNED_WORD_RE: Final[re.Pattern[str]] = re.compile(
+    r"В[оа][зz3]вр[ао]щ[её]н",
+    re.IGNORECASE,
+)
 
 
-def get_paths():
-    return glob(os.path.join(input_folder, "*.[Pp][Nn][Gg]"))
+def _ensure_dirs() -> None:
+    INPUT_DIR.mkdir(parents=True, exist_ok=True)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def process_image_d_v2(input_path: str):
-    img = cv2.imread(input_path)
-    if img is None:
+_ensure_dirs()
+
+
+def _resolve_asset(name: str) -> Path:
+    candidates = [
+        ASSETS_DIR / name,
+        Path.cwd() / name,  # legacy location
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return ASSETS_DIR / name
+
+
+def _load_font() -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    font_path = _resolve_asset("hr.ttf")
+    try:
+        return ImageFont.truetype(str(font_path), FONT_SIZE)
+    except OSError as exc:
+        logger.warning("Не удалось загрузить шрифт %s: %s", font_path, exc)
+        return ImageFont.load_default()
+
+
+FONT = _load_font()
+
+
+def _configure_tesseract() -> None:
+    env_cmd = os.environ.get("TESSERACT_CMD")
+    if env_cmd:
+        pytesseract.pytesseract.tesseract_cmd = env_cmd
         return
 
-    # === 1. УЛУЧШАЕМ КОНТРАСТ ДЛЯ ЛЮБОГО ФОНА ===
-    lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
-    l, a, b = cv2.split(lab)
-    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-    cl = clahe.apply(l)
-    merged = cv2.merge((cl, a, b))
-    enhanced = cv2.cvtColor(merged, cv2.COLOR_LAB2BGR)
+    # If user has tesseract in PATH, prefer it.
+    path_cmd = shutil.which("tesseract")
+    if path_cmd:
+        pytesseract.pytesseract.tesseract_cmd = path_cmd
+        return
 
-    # === 2. ГЕНЕРИРУЕМ 4 ВЕРСИИ ДЛЯ OCR ===
-    versions = []
+    # Reasonable Windows default.
+    if sys.platform.startswith("win"):
+        default_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+        if Path(default_cmd).exists():
+            pytesseract.pytesseract.tesseract_cmd = default_cmd
+
+
+_configure_tesseract()
+
+
+def get_paths() -> list[str]:
+    _ensure_dirs()
+    return sorted(glob(str(INPUT_DIR / PNG_GLOB)))
+
+
+def _copy_to_output(input_path: str) -> None:
+    output_path = OUTPUT_DIR / Path(input_path).name.lower()
+    try:
+        shutil.copy2(input_path, output_path)
+    except OSError as exc:
+        logger.warning("Не удалось сохранить результат %s: %s", output_path, exc)
+
+
+def _normalize_date(text: str) -> str:
+    """Преобразует `ddmmyyyy` → `dd.mm.yyyy` внутри строки (если есть)."""
+
+    match = DATE_DDMMYYYY_RE.search(text)
+    if not match:
+        return text
+
+    dd, mm, yyyy = match.groups()
+    try:
+        dt = datetime.datetime.strptime(f"{dd}{mm}{yyyy}", "%d%m%Y")
+        return text.replace(match.group(0), dt.strftime("%d.%m.%Y"))
+    except ValueError:
+        return text
+
+
+def process_image_d_v2(input_path: str) -> bool:
+    img = cv2.imread(input_path)
+    if img is None:
+        logger.info("Не удалось загрузить: %s", input_path)
+        return False
+
+    lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+    l_channel, a_channel, b_channel = cv2.split(lab)
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    cl = clahe.apply(l_channel)
+    enhanced = cv2.cvtColor(cv2.merge((cl, a_channel, b_channel)), cv2.COLOR_LAB2BGR)
 
     gray = cv2.cvtColor(enhanced, cv2.COLOR_BGR2GRAY)
-    resized = cv2.resize(gray, None, fx=_f_v2, fy=_f_v2, interpolation=cv2.INTER_CUBIC)
-    # Версия 2: Инверсия (тёмный фон)
+    resized = cv2.resize(
+        gray,
+        None,
+        fx=SCALE_V2,
+        fy=SCALE_V2,
+        interpolation=cv2.INTER_CUBIC,
+    )
+
+    versions: list[tuple[str, "cv2.typing.MatLike"]] = []
     _, thresh_inv = cv2.threshold(resized, 70, 255, cv2.THRESH_BINARY_INV)
     versions.append(("dark", thresh_inv))
-    # Версия 1: Стандартная обработка (светлый фон)
     _, thresh = cv2.threshold(resized, 180, 255, cv2.THRESH_BINARY)
     versions.append(("light", thresh))
 
-    # === 3. ИЩЕМ ТЕКСТ ВО ВСЕХ ВЕРСИЯХ ===
     found_any = False
     pil_img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
     draw = ImageDraw.Draw(pil_img)
 
-    for version_name, processed in versions:
-        # Сохраняем для отладки (раскомментировать при проблемах)
-        # cv2.imwrite(f"debug_{version_name}.png", processed)
-
-        for psm in psm_modes:
-            custom_config = f"--oem 3 --psm {psm} -c tessedit_char_whitelist=АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдеёжзийклмнопрстуфхцчшщъыьэюя0123456789 "
-            ocr_data = pytesseract.image_to_data(
-                Image.fromarray(processed),
-                config=custom_config,
-                lang="rus",
-                output_type=pytesseract.Output.DICT,
+    for _version_name, processed in versions:
+        for psm in PSM_MODES:
+            custom_config = (
+                f"--oem 3 --psm {psm} "
+                "-c tessedit_char_whitelist="
+                "АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ"
+                "абвгдеёжзийклмнопрстуфхцчшщъыьэюя"
+                "0123456789 "
             )
 
-            n_boxes = len(ocr_data["text"])
-            for i in range(n_boxes):
-                text = ocr_data["text"][i].strip()
+            try:
+                ocr_data = pytesseract.image_to_data(
+                    Image.fromarray(processed),
+                    config=custom_config,
+                    lang="rus",
+                    output_type=pytesseract.Output.DICT,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Ошибка OCR: %s", exc)
+                _copy_to_output(input_path)
+                return False
+
+            for i, raw_text in enumerate(ocr_data.get("text", [])):
+                text = (raw_text or "").strip()
                 if not text:
                     continue
 
-                # УЛУЧШЕННЫЙ ПОИСК С РАЗНЫМИ ВАРИАНТАМИ НАПИСАНИЯ
-                if re.search(r"В[оа]звр[ао]щ[её]н", text, re.IGNORECASE):
-                    # ТОЧНОЕ МАСШТАБИРОВАНИЕ КООРДИНАТ
-                    x = int(ocr_data["left"][i] / _f_v2)
-                    y = int(ocr_data["top"][i] / _f_v2)
-                    w = int(ocr_data["width"][i] / _f_v2)
-                    h = int(ocr_data["height"][i] / _f_v2)
+                if not RETURNED_WORD_RE.search(text):
+                    continue
 
-                    fill_color = (24, 24, 27)
+                x = int(ocr_data["left"][i] / SCALE_V2)
+                y = int(ocr_data["top"][i] / SCALE_V2)
+                w = int(ocr_data["width"][i] / SCALE_V2)
+                h = int(ocr_data["height"][i] / SCALE_V2)
 
-                    # 🔥 КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: РАСШИРЕННЫЙ БОКС
-                    padding_horiz = 8
-                    padding_vert_top = 3
-                    padding_vert_bot = 10
+                padding_horiz = 8
+                padding_vert_top = 3
+                padding_vert_bot = 10
 
-                    x1 = max(0, x - padding_horiz)
-                    y1 = max(0, y - padding_vert_top)
-                    x2 = min(pil_img.width, x + w + padding_horiz)
-                    y2 = min(pil_img.height, y + h + padding_vert_bot)
+                x1 = max(0, x - padding_horiz)
+                y1 = max(0, y - padding_vert_top)
+                x2 = min(pil_img.width, x + w + padding_horiz)
+                y2 = min(pil_img.height, y + h + padding_vert_bot)
 
-                    draw.rectangle((x1, y1, x2, y2), fill=fill_color)
+                draw.rectangle((x1, y1, x2, y2), fill=(24, 24, 27))
 
-                    # Цвет текста: БЕЛЫЙ на тёмном, ЧЁРНЫЙ на светлом
-                    text_color = (0, 179, 89)
-                    try:
-                        time = datetime.datetime.strptime(text[9:], "%d%m%Y")
-                        time_str = time.strftime("%d.%m.%Y")
-                        text = text.replace(text[9:], time_str)
-                    except:
-                        pass
+                normalized = _normalize_date(text)
+                new_text = RETURNED_WORD_RE.sub("Доставлен ", normalized)
 
-                    # Заменяем ТОЛЬКО целое слово
-                    new_text = re.sub(
-                        r"В[оа]звр[ао]щ[её]н",
-                        "Доставлен ",
-                        text,
-                        flags=re.IGNORECASE,
-                    )
+                draw.text(
+                    (max(0, x - 5), max(0, y - int(h * 0.1))),
+                    new_text,
+                    fill=(0, 179, 89),
+                    font=FONT,
+                )
+                found_any = True
 
-                    # Коррекция позиции (на случай смещения)
-                    draw.text(
-                        (x - 5, y - int(h * 0.1)),
-                        new_text,
-                        fill=text_color,
-                        font=font,
-                    )
-                    found_any = True
             if found_any:
                 break
         if found_any:
             break
 
-    # Сохраняем результат
-    output_path = os.path.join(output_dir, os.path.basename(input_path).lower())
+    output_path = OUTPUT_DIR / Path(input_path).name.lower()
     pil_img.save(output_path, format="PNG")
     return found_any
 
 
-def process_image_d_v1(input_path: str):
+def process_image_d_v1(input_path: str) -> bool:
     original_image = cv2.imread(input_path)
     if original_image is None:
-        logger.error(f"❌ Не удалось загрузить изображение: {input_path}")
-        return
+        logger.error("Не удалось загрузить изображение: %s", input_path)
+        return False
 
-    original_rgb = cv2.cvtColor(original_image, cv2.COLOR_BGR2RGB)
-    pil_img = Image.fromarray(original_rgb)
+    pil_img = Image.fromarray(cv2.cvtColor(original_image, cv2.COLOR_BGR2RGB))
     draw = ImageDraw.Draw(pil_img)
 
-    # Предобработка для OCR
     gray = cv2.cvtColor(original_image, cv2.COLOR_BGR2GRAY)
-    orig_h, orig_w = gray.shape
-    gray = cv2.resize(gray, None, fx=_f, fy=_f)
+    gray = cv2.resize(gray, None, fx=SCALE_V1, fy=SCALE_V1)
     _, thresh = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY)
-    ocr_rgb = cv2.cvtColor(thresh, cv2.COLOR_GRAY2RGB)
-    pil_for_ocr = Image.fromarray(ocr_rgb)
+    pil_for_ocr = Image.fromarray(cv2.cvtColor(thresh, cv2.COLOR_GRAY2RGB))
 
     found_any = False
 
-    for psm in psm_modes:
+    for psm in PSM_MODES:
         custom_config = f"--oem 3 --psm {psm}"
-        ocr_data = pytesseract.image_to_data(
-            pil_for_ocr,
-            config=custom_config,
-            lang="rus",
-            output_type=pytesseract.Output.DICT,
-        )
+        try:
+            ocr_data = pytesseract.image_to_data(
+                pil_for_ocr,
+                config=custom_config,
+                lang="rus",
+                output_type=pytesseract.Output.DICT,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Ошибка OCR: %s", exc)
+            _copy_to_output(input_path)
+            return False
 
-        n_boxes = len(ocr_data["text"])
-        for i in range(n_boxes):
-            text = ocr_data["text"][i].strip()
+        texts = ocr_data.get("text", [])
+        for i, raw_text in enumerate(texts):
+            text = (raw_text or "").strip()
             if not text:
                 continue
 
-            if re.search(r"Возвращ[её]н", text):
-                # Масштабирование координат обратно к оригиналу
-                x = int(ocr_data["left"][i] / _f)
-                y = int(ocr_data["top"][i] / _f)
-                w = int(ocr_data["width"][i] / _f)
-                h = int(ocr_data["height"][i] / _f)
+            if not re.search(r"Возвращ[её]н", text, re.IGNORECASE):
+                continue
 
-                text = f"{text} {ocr_data['text'][i + 1].strip()}"
-                x1 = int(ocr_data["left"][i + 1] / _f)
-                y1 = int(ocr_data["top"][i + 1] / _f)
-                w1 = int(ocr_data["width"][i + 1] / _f)
-                h1 = int(ocr_data["height"][i + 1] / _f)
+            x = int(ocr_data["left"][i] / SCALE_V1)
+            y = int(ocr_data["top"][i] / SCALE_V1)
+            w = int(ocr_data["width"][i] / SCALE_V1)
+            h = int(ocr_data["height"][i] / SCALE_V1)
 
-                found_any = True
-                # Закрашиваем белым
-                draw.rectangle((x, y, x + w, y + h), fill="white")
+            # Some screenshots split date into the next token; avoid IndexError.
+            next_text = ""
+            if i + 1 < len(texts):
+                next_text = (texts[i + 1] or "").strip()
+
+            full_text = f"{text} {next_text}".strip()
+            full_text = _normalize_date(full_text)
+
+            draw.rectangle((x, y, x + w, y + h), fill="white")
+            if next_text:
+                x1 = int(ocr_data["left"][i + 1] / SCALE_V1)
+                y1 = int(ocr_data["top"][i + 1] / SCALE_V1)
+                w1 = int(ocr_data["width"][i + 1] / SCALE_V1)
+                h1 = int(ocr_data["height"][i + 1] / SCALE_V1)
                 draw.rectangle((x1, y1, x1 + w1, y1 + h1), fill="white")
-                # Вставляем "Доставлен"
-                new_text = re.sub(
-                    r"Возвращ[её]н", "Доставлен", text, flags=re.IGNORECASE
-                )
-                draw.text(
-                    (x - 5, y), new_text, fill=(0, 179, 89), font=font
-                )  # зелёный цвет
+
+            new_text = re.sub(
+                r"Возвращ[её]н",
+                "Доставлен",
+                full_text,
+                flags=re.IGNORECASE,
+            )
+            draw.text((max(0, x - 5), y), new_text, fill=(0, 179, 89), font=FONT)
+            found_any = True
 
         if found_any:
             break
 
-    output_path = os.path.join(output_dir, os.path.basename(input_path).lower())
+    output_path = OUTPUT_DIR / Path(input_path).name.lower()
     pil_img.save(output_path, format="PNG")
     return found_any
 
 
-def process_image_d_vertical(input_path: str):
+def process_image_d_vertical(input_path: str) -> bool:
     original_image = cv2.imread(input_path)
     if original_image is None:
-        logger.error(f"❌ Не удалось загрузить изображение: {input_path}")
-        return
+        logger.error("Не удалось загрузить изображение: %s", input_path)
+        return False
 
-    original_rgb = cv2.cvtColor(original_image, cv2.COLOR_BGR2RGB)
-    pil_img = Image.fromarray(original_rgb)
+    pil_img = Image.fromarray(cv2.cvtColor(original_image, cv2.COLOR_BGR2RGB))
     draw = ImageDraw.Draw(pil_img)
 
-    # Предобработка для OCR
     gray = cv2.cvtColor(original_image, cv2.COLOR_BGR2GRAY)
-    orig_h, orig_w = gray.shape
-    gray = cv2.resize(gray, None, fx=_f, fy=_f)
+    gray = cv2.resize(gray, None, fx=SCALE_V1, fy=SCALE_V1)
     _, thresh = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY)
-    ocr_rgb = cv2.cvtColor(thresh, cv2.COLOR_GRAY2RGB)
-    pil_for_ocr = Image.fromarray(ocr_rgb)
+    pil_for_ocr = Image.fromarray(cv2.cvtColor(thresh, cv2.COLOR_GRAY2RGB))
 
     found_any = False
+    date_re = re.compile(r"\b(\d{2})[./](\d{2})[./](\d{4})\b")
 
-    for psm in psm_modes:
+    for psm in PSM_MODES:
         custom_config = f"--oem 3 --psm {psm}"
-        ocr_data = pytesseract.image_to_data(
-            pil_for_ocr,
-            config=custom_config,
-            lang="rus",
-            output_type=pytesseract.Output.DICT,
-        )
+        try:
+            ocr_data = pytesseract.image_to_data(
+                pil_for_ocr,
+                config=custom_config,
+                lang="rus",
+                output_type=pytesseract.Output.DICT,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Ошибка OCR: %s", exc)
+            _copy_to_output(input_path)
+            return False
 
-        n_boxes = len(ocr_data["text"])
-        for i in range(n_boxes):
-            text = ocr_data["text"][i].strip()
+        for i, raw_text in enumerate(ocr_data.get("text", [])):
+            text = (raw_text or "").strip()
             if not text:
                 continue
 
-            if re.search(r"Возвращ[её]н", text) or re.search(
-                r"(\d{2}).(\d{2}).(\d{4})", text
+            if not (
+                re.search(r"Возвращ[её]н", text, re.IGNORECASE) or date_re.search(text)
             ):
-                # Масштабирование координат обратно к оригиналу
-                x = int(ocr_data["left"][i] / _f)
-                y = int(ocr_data["top"][i] / _f)
-                w = int(ocr_data["width"][i] / _f)
-                h = int(ocr_data["height"][i] / _f)
+                continue
 
-                found_any = True
-                # Закрашиваем белым
-                draw.rectangle((x, y, x + w, y + h), fill="white")
-                # Вставляем "Доставлен"
-                new_text = re.sub(
-                    r"Возвращ[её]н", "Доставлен", text, flags=re.IGNORECASE
-                )
-                draw.text(
-                    (x - 5, y), new_text, fill=(0, 179, 89), font=font
-                )  # зелёный цвет
+            x = int(ocr_data["left"][i] / SCALE_V1)
+            y = int(ocr_data["top"][i] / SCALE_V1)
+            w = int(ocr_data["width"][i] / SCALE_V1)
+            h = int(ocr_data["height"][i] / SCALE_V1)
+
+            draw.rectangle((x, y, x + w, y + h), fill="white")
+            new_text = _normalize_date(text)
+            new_text = re.sub(
+                r"Возвращ[её]н",
+                "Доставлен",
+                new_text,
+                flags=re.IGNORECASE,
+            )
+            draw.text((max(0, x - 5), y), new_text, fill=(0, 179, 89), font=FONT)
+            found_any = True
 
         if found_any:
-            break  # выходим после первого успешного режима
+            break
 
-    output_path = os.path.join(output_dir, os.path.basename(input_path).lower())
+    output_path = OUTPUT_DIR / Path(input_path).name.lower()
     pil_img.save(output_path, format="PNG")
     return found_any
 
 
-def clear_dirs_d():
-    for file in os.listdir(output_dir):
-        os.remove(os.path.join(output_dir, file))
-    for file in os.listdir(input_folder):
-        os.remove(os.path.join(input_folder, file))
+def clear_dirs_d() -> None:
+    for folder in (OUTPUT_DIR, INPUT_DIR):
+        if not folder.exists():
+            continue
+        for file_path in folder.iterdir():
+            if not file_path.is_file():
+                continue
+            try:
+                file_path.unlink()
+            except OSError as exc:
+                logger.debug("Не удалось удалить %s: %s", file_path, exc)

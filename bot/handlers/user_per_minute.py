@@ -7,13 +7,9 @@ from aiogram import F, Router
 from aiogram.types import CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bot.db.mysql.models import (
-    UserManager,
-)
+from bot.db.models import UserManager
 from bot.keyboards.factories import UserPerMinuteFactory
-from bot.keyboards.inline import (
-    ik_num_matrix_users,
-)
+from bot.keyboards.inline import ik_num_matrix_users
 
 if TYPE_CHECKING:
     pass
