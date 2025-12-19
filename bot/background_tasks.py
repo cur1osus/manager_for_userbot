@@ -31,6 +31,11 @@ LEGACY_NOT_ACCEPTED_LAST_ID_KEY: Final[str] = f"{LEGACY_REDIS_PREFIX}:last_id"
 
 # Conservative delay between outgoing messages to the same user.
 SEND_DELAY_SECONDS: Final[float] = 1.0
+USERBOT_JOB_TASKS: Final[tuple[str, ...]] = (
+    "delete_private_channel",
+    "connection_error",
+    "flood_wait_error",
+)
 
 
 def _redis_key(*parts: str) -> str:
@@ -255,7 +260,10 @@ async def handle_job_from_userbot(
         rows = await session.scalars(
             select(Job)
             .options(selectinload(Job.bot).selectinload(DBBot.manager))
-            .where(Job.answer.is_(None))
+            .where(
+                Job.answer.is_(None),
+                Job.task.in_(USERBOT_JOB_TASKS),
+            )
             .order_by(Job.id.asc())
             .limit(100),
         )
