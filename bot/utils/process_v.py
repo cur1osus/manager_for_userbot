@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 ASSETS_DIR: Final[Path] = Path(__file__).resolve().parent / "assets"
 INPUT_DIR: Final[Path] = Path("images_v")
 OUTPUT_DIR: Final[Path] = Path("result_images_v")
-PNG_GLOB: Final[str] = "*.[Pp][Nn][Gg]"
+SUPPORTED_EXTENSIONS: Final[set[str]] = {".png", ".jpg", ".jpeg"}
 TEMPLATE_THRESHOLD: Final[float] = 0.8
 
 # Backward-compatible aliases (some code may rely on these names).
@@ -32,7 +32,11 @@ _ensure_dirs()
 
 def get_paths() -> list[str]:
     _ensure_dirs()
-    return sorted(str(p) for p in INPUT_DIR.glob(PNG_GLOB))
+    return sorted(
+        str(p)
+        for p in INPUT_DIR.iterdir()
+        if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS
+    )
 
 
 class _Assets(NamedTuple):

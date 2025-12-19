@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 ASSETS_DIR: Final[Path] = Path(__file__).resolve().parent / "assets"
 INPUT_DIR: Final[Path] = Path("images_d")
 OUTPUT_DIR: Final[Path] = Path("result_images_d")
-PNG_GLOB: Final[str] = "*.[Pp][Nn][Gg]"
+SUPPORTED_EXTENSIONS: Final[set[str]] = {".png", ".jpg", ".jpeg"}
 
 # Backward-compatible aliases (some code may rely on these names).
 input_folder: Final[str] = str(INPUT_DIR)
@@ -93,7 +93,11 @@ _configure_tesseract()
 
 def get_paths() -> list[str]:
     _ensure_dirs()
-    return sorted(glob(str(INPUT_DIR / PNG_GLOB)))
+    return sorted(
+        str(p)
+        for p in INPUT_DIR.iterdir()
+        if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS
+    )
 
 
 def _copy_to_output(input_path: str) -> None:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+from collections import deque
 import logging
 import os
 import signal
@@ -57,6 +58,29 @@ def _read_pid(pid_path: Path) -> int | None:
 
 class Function:
     max_length_message: Final[int] = 4000
+
+    @staticmethod
+    def get_log(path: str | os.PathLike[str], line_count: int) -> list[str] | str:
+        if line_count <= 0:
+            return "Количество строк должно быть больше нуля"
+
+        log_path = Path(path)
+        if not log_path.exists():
+            return "Файл не найден"
+        if not log_path.is_file():
+            return "Указанный путь не является файлом"
+
+        try:
+            with log_path.open("r", encoding="utf-8", errors="ignore") as file:
+                lines = deque(file, maxlen=line_count)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Не удалось прочитать лог %s: %s", log_path, exc)
+            return "Не удалось прочитать лог"
+
+        if not lines:
+            return "Файл пуст"
+
+        return [line.rstrip("\n") for line in lines]
 
     @staticmethod
     async def get_closer_data_users(
