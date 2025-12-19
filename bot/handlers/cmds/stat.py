@@ -32,7 +32,7 @@ async def stat_cmd(
     r = await session.execute(
         select(UserAnalyzed).where(
             and_(
-                not UserAnalyzed.sended,
+                UserAnalyzed.sended.is_(False),
                 UserAnalyzed.accepted,
             )
         )
