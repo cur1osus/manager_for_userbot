@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
@@ -24,6 +24,7 @@ HISTORY_FILTER = (
     UserAnalyzed.accepted.is_(True),
     UserAnalyzed.sended.is_(True),
 )
+ITOI_BACK_TARGET: Final = "itoi"
 
 
 def _normalize_page(page: int, total_pages: int) -> int:
@@ -65,7 +66,7 @@ async def history(
     )
     if not rows_count:
         await query.message.edit_text(
-            text="История пуста", reply_markup=await ik_back()
+            text="История пуста", reply_markup=await ik_back(back_to=ITOI_BACK_TARGET)
         )
         return
 
@@ -91,6 +92,7 @@ async def history(
         reply_markup=await ik_history_back(
             all_page=all_page,
             current_page=current_page,
+            back_to=ITOI_BACK_TARGET,
         ),
     )
 

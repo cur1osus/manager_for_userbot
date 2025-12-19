@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
@@ -19,7 +19,7 @@ from bot.keyboards.factories import (
 from bot.keyboards.inline import (
     ik_add_or_delete,
     ik_cancel_action,
-    ik_main_menu,
+    ik_itoi_menu,
     ik_num_matrix_del,
 )
 from bot.settings import se
@@ -31,6 +31,33 @@ if TYPE_CHECKING:
 
 router = Router()
 logger = logging.getLogger(__name__)
+ITOI_BACK_TARGET: Final = "itoi"
+INFO_TYPES_IN_ITOI: Final[set[str]] = {"ignore", "keyword", "answer"}
+
+
+async def _show_itoi_menu(
+    query: CallbackQuery, user: UserManager, state: FSMContext
+) -> None:
+    await fn.state_clear(state)
+    await query.message.edit_text("ИТОИ", reply_markup=await ik_itoi_menu(user))
+
+
+@router.callback_query(F.data == "itoi")
+async def open_itoi_menu(
+    query: CallbackQuery, user: UserManager, state: FSMContext
+) -> None:
+    await _show_itoi_menu(query, user, state)
+
+
+@router.callback_query(BackFactory.filter(F.to == ITOI_BACK_TARGET))
+async def back_to_itoi(
+    query: CallbackQuery, user: UserManager, state: FSMContext
+) -> None:
+    await _show_itoi_menu(query, user, state)
+
+
+def _info_back_target(type_data: str) -> str:
+    return ITOI_BACK_TARGET if type_data in INFO_TYPES_IN_ITOI else "default"
 
 
 async def get_data_for_info(user: UserManager, type_data: str) -> list[str]:
@@ -104,13 +131,16 @@ async def info(
     callback_data: InfoFactory,
 ) -> None:
     type_data = callback_data.key
+    back_target = _info_back_target(type_data)
 
     data = await get_data_for_info(user, type_data)
     data_str, current_page, all_page = await data_info_to_string(data)
 
     await query.message.edit_text(
         text=data_str,
-        reply_markup=await ik_add_or_delete(current_page, all_page),
+        reply_markup=await ik_add_or_delete(
+            current_page, all_page, back_to=back_target
+        ),
     )
 
     await state.set_state(InfoState.info)
@@ -135,6 +165,7 @@ async def arrow_info(
     page = data_state["current_page"]
     all_page = data_state["all_page"]
     type_data = data_state["type_data"]
+    back_target = _info_back_target(type_data)
     match arrow:
         case "left":
             page = page - 1 if page > 1 else all_page
@@ -148,7 +179,9 @@ async def arrow_info(
         )
         await query.message.edit_text(
             text=data_str,
-            reply_markup=await ik_add_or_delete(current_page, all_page),
+            reply_markup=await ik_add_or_delete(
+                current_page, all_page, back_to=back_target
+            ),
         )
     except Exception:
         await query.answer("Страница всего одна :(")
@@ -193,6 +226,7 @@ async def processing_message_to_add(
 ) -> None:
     data_to_add = [i.strip() for i in message.text.split(se.sep) if i]
     type_data = (await state.get_data())["type_data"]
+    back_target = _info_back_target(type_data)
     match type_data:
         case "answer":
             messages_to_answer = await user.awaitable_attrs.messages_to_answer
@@ -229,7 +263,9 @@ async def processing_message_to_add(
     )
     msg = await message.answer(
         text=data_str,
-        reply_markup=await ik_add_or_delete(current_page, all_page),
+        reply_markup=await ik_add_or_delete(
+            current_page, all_page, back_to=back_target
+        ),
     )
     await fn.set_general_message(state, msg)
     await state.set_state(InfoState.info)
@@ -300,16 +336,6 @@ async def back_info(
     await info(query, user, state, InfoFactory(key=key))
 
 
-@router.callback_query(InfoState.info, BackFactory.filter(F.to == "default"))
-async def back(
-    query: CallbackQuery,
-    state: FSMContext,
-    user: UserManager,
-) -> None:
-    await fn.state_clear(state)
-    await query.message.edit_text("Главное меню", reply_markup=await ik_main_menu(user))
-
-
 @router.callback_query(InfoState.add, CancelFactory.filter(F.to == "default"))
 async def cancel(
     query: CallbackQuery,
@@ -318,6 +344,7 @@ async def cancel(
 ) -> None:
     current_page = (await state.get_data())["current_page"]
     type_data = (await state.get_data())["type_data"]
+    back_target = _info_back_target(type_data)
 
     data = await get_data_for_info(user, type_data)
     data_str, current_page, all_page = await data_info_to_string(
@@ -326,7 +353,9 @@ async def cancel(
 
     msg = await query.message.answer(
         text=data_str,
-        reply_markup=await ik_add_or_delete(current_page, all_page),
+        reply_markup=await ik_add_or_delete(
+            current_page, all_page, back_to=back_target
+        ),
     )
     await fn.set_general_message(state, msg)
     await state.set_state(InfoState.info)

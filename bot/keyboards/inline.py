@@ -31,24 +31,42 @@ logger = logging.getLogger(__name__)
 async def ik_main_menu(user: UserManager) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text=f"👥 Все боты [{len(user.bots)}]", callback_data="bots_all")
-    builder.button(
-        text=f"📂 Все папки [{len(user.folders)}]", callback_data="bots"
-    )
+    builder.button(text=f"📂 Все папки [{len(user.folders)}]", callback_data="bots")
     # builder.button(text="❇️ Добавить бота", callback_data="add_new_bot")
-    builder.button(text="❌ Игноры", callback_data=InfoFactory(key="ignore"))
+    builder.button(text="ИТОИ", callback_data="itoi")
     builder.button(text="🚷 Баны", callback_data=InfoFactory(key="ban"))
-    builder.button(text="❗️Тригеры", callback_data=InfoFactory(key="keyword"))
-    builder.button(text="🗣 Ответы", callback_data=InfoFactory(key="answer"))
     builder.button(
         text=f"🤖 Антифлуд: {'🟢' if user.is_antiflood_mode else '🔴'}",
         callback_data="antiflood_mode",
     )
     builder.button(
-        text=f"🏃🏼‍➡️ Пропускная способность: {user.users_per_minute}",
+        text=f"🏃🏼‍➡️ Пропускная: {user.users_per_minute}",
         callback_data="users_per_minute",
     )
-    builder.button(text="🔍 История", callback_data="history")
-    builder.adjust(2, 2, 2, 2, 1)
+    builder.adjust(2, 2, 2)
+    return builder.as_markup()
+
+
+async def ik_itoi_menu(user: UserManager) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text=f"❌ Игноры [{len(user.ignored_words)}]",
+        callback_data=InfoFactory(key="ignore"),
+    )
+    builder.button(
+        text=f"❗️ Тригеры [{len(user.keywords)}]",
+        callback_data=InfoFactory(key="keyword"),
+    )
+    builder.button(
+        text=f"🗣 Ответы [{len(user.messages_to_answer)}]",
+        callback_data=InfoFactory(key="answer"),
+    )
+    builder.button(
+        text="🔍 История",
+        callback_data="history",
+    )
+    builder.button(text="<-", callback_data=BackFactory(to="default"))
+    builder.adjust(2, 2, 1)
     return builder.as_markup()
 
 
