@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import logging
 from typing import TYPE_CHECKING
 
@@ -10,6 +11,8 @@ from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.db.models import Bot, Job, UserManager
+from bot.handlers import bots as bots_handlers
+from bot.handlers.bots import FOLDER_BACK_PREFIX
 from bot.keyboards.inline import ik_main_menu
 from bot.states.main import BotState
 from bot.utils import fn
@@ -42,4 +45,23 @@ async def disconnected_bot(
     await fn.Manager.stop_bot(phone=bot.phone)
     await session.execute(delete(Job).where(Job.bot_id == bot.id))
     await session.commit()
-    await query.message.edit_text("Бот отключен", reply_markup=await ik_main_menu(user))
+
+    back_to = data.get("bots_back_to", "bots_all")
+    if back_to == "bots_all":
+        await bots_handlers.show_all_bots(query, session, state, user)
+    elif back_to == "bots_no_folder":
+        await bots_handlers.show_no_folder_bots(query, session, state, user)
+    elif isinstance(back_to, str) and back_to.startswith(FOLDER_BACK_PREFIX):
+        with contextlib.suppress(Exception):
+            folder_id = int(back_to.removeprefix(FOLDER_BACK_PREFIX))
+            await bots_handlers.show_folder_bots_by_id(
+                query,
+                session,
+                state,
+                user,
+                folder_id=folder_id,
+            )
+            return
+        await bots_handlers.show_all_bots(query, session, state, user)
+    else:
+        await query.message.edit_text("Бот отключен", reply_markup=await ik_main_menu(user))

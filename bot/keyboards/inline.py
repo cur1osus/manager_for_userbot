@@ -30,7 +30,10 @@ logger = logging.getLogger(__name__)
 
 async def ik_main_menu(user: UserManager) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text=f"👥 Боты [{len(user.bots)}]", callback_data="bots")
+    builder.button(text=f"👥 Все боты [{len(user.bots)}]", callback_data="bots_all")
+    builder.button(
+        text=f"📂 Все папки [{len(user.folders)}]", callback_data="bots"
+    )
     # builder.button(text="❇️ Добавить бота", callback_data="add_new_bot")
     builder.button(text="❌ Игноры", callback_data=InfoFactory(key="ignore"))
     builder.button(text="🚷 Баны", callback_data=InfoFactory(key="ban"))
@@ -45,7 +48,7 @@ async def ik_main_menu(user: UserManager) -> InlineKeyboardMarkup:
         callback_data="users_per_minute",
     )
     builder.button(text="🔍 История", callback_data="history")
-    builder.adjust(1, 2, 2, 1)
+    builder.adjust(2, 2, 2, 2, 1)
     return builder.as_markup()
 
 
@@ -83,7 +86,6 @@ async def ik_bot_folder_list(
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="➕ Создать папку", callback_data="bots_create_folder")
-    builder.button(text="📦 Все боты", callback_data="bots_all")
     # builder.button(text="📂 Без папки", callback_data="bots_no_folder")
     for folder in folders:
         builder.button(

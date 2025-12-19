@@ -40,6 +40,7 @@ async def _show_bots(
     title: str,
     empty_text: str,
     actions_back_to: str,
+    back_to: str = LIST_BACK_TO,
 ) -> None:
     stmt = (
         select(Bot)
@@ -69,7 +70,7 @@ async def _show_bots(
             text=empty_text,
             reply_markup=await ik_available_bots(
                 [],
-                back_to=LIST_BACK_TO,
+                back_to=back_to,
                 delete_folder_id=delete_folder_id,
                 add_to_folder_id=add_to_folder_id,
             ),
@@ -93,7 +94,7 @@ async def _show_bots(
         title,
         reply_markup=await ik_available_bots(
             bots,
-            back_to=LIST_BACK_TO,
+            back_to=back_to,
             add_to_folder_id=add_to_folder_id,
         ),
     )
@@ -138,6 +139,7 @@ async def show_all_bots(
         title="Все боты",
         empty_text="Ботов еще нет",
         actions_back_to="bots_all",
+        back_to="default",
     )
 
 
