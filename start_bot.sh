@@ -12,6 +12,7 @@ SESSION_PATH="${1:-}"
 API_ID="${2:-}"
 API_HASH="${3:-}"
 PHONE="${4:-}"
+SESSION_DIR="$(dirname "$SESSION_PATH")"
 
 LOG_DIR="$MANAGER_DIR/sessions"
 LOG_FILE="$LOG_DIR/${PHONE}.log"
@@ -21,6 +22,37 @@ PID_FILE="$LOG_DIR/${PHONE}.pid"
 if [ -z "$PHONE" ]; then
     echo "Usage: $0 <session_path> <api_id> <api_hash> <phone>"
     exit 1
+fi
+
+# Готовим каталог/файл сессии, чтобы Telethon мог писать в SQLite
+if [ -n "$SESSION_DIR" ] && [ "$SESSION_DIR" != "." ]; then
+    mkdir -p "$SESSION_DIR" || {
+        echo "Не удалось создать каталог для сессий: $SESSION_DIR"
+        exit 1
+    }
+fi
+
+if [ ! -w "$SESSION_DIR" ]; then
+    echo "Каталог сессии недоступен для записи: $SESSION_DIR"
+    exit 1
+fi
+
+if [ -n "$SESSION_PATH" ]; then
+    if [ -e "$SESSION_PATH" ]; then
+        if [ ! -w "$SESSION_PATH" ]; then
+            echo "Снимаем read-only с файла сессии $SESSION_PATH"
+            chmod u+rw "$SESSION_PATH" || {
+                echo "Не удалось сделать файл сессии доступным для записи"
+                exit 1
+            }
+        fi
+    else
+        touch "$SESSION_PATH" || {
+            echo "Не удалось создать файл сессии $SESSION_PATH"
+            exit 1
+        }
+        chmod 600 "$SESSION_PATH" || true
+    fi
 fi
 
 # Создаём папку для логов и включаем логирование всего скрипта в файл
