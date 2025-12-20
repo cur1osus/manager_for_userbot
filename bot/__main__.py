@@ -101,8 +101,6 @@ async def set_default_commands(bot: Bot) -> None:
             BotCommand(command="stat", description="статистика"),
             BotCommand(command="reset", description="reset"),
             BotCommand(command="log", description="log"),
-            BotCommand(command="do", description="доставлен"),
-            BotCommand(command="vu", description="выкуплен"),
         ]
     )
 
