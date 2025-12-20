@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
-from settings import se
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.db.models import Bot, Job, JobName, MonitoringChat
@@ -23,6 +22,7 @@ from bot.keyboards.inline import (
     ik_cancel_action,
     ik_num_matrix_del,
 )
+from bot.settings import se
 from bot.states.main import BotState, InfoState
 from bot.utils import fn
 
