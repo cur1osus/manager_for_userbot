@@ -261,6 +261,7 @@ async def processing_message_to_add(
     data_str, current_page, all_page = await data_info_to_string(
         data, current_page=current_page
     )
+    await state.update_data(current_page=current_page, all_page=all_page)
     msg = await message.answer(
         text=data_str,
         reply_markup=await ik_add_or_delete(
