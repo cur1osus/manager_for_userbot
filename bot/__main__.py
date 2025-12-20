@@ -99,9 +99,9 @@ async def set_default_commands(bot: Bot) -> None:
         [
             BotCommand(command="start", description="start"),
             BotCommand(command="stat", description="статистика"),
+            BotCommand(command="ban", description="быстро добавить в бан"),
             BotCommand(command="reset", description="reset"),
             BotCommand(command="log", description="log"),
-            BotCommand(command="ban", description="быстро добавить в бан"),
         ]
     )
 
