@@ -1,7 +1,19 @@
 from aiogram import Router
 
-from . import (antiflood_mode, back, bot_actions, bots, chats, cmds, folders,
-               history, info, reaction, reg_userbot, user_per_minute)
+from . import (
+    antiflood_mode,
+    back,
+    bot_actions,
+    bots,
+    chats,
+    cmds,
+    folders,
+    history,
+    info,
+    reaction,
+    reg_userbot,
+    user_per_minute,
+)
 
 router = Router()
 

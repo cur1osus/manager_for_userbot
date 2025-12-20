@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
+from settings import se
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.db.models import Bot, Job, JobName, MonitoringChat
@@ -43,7 +44,7 @@ async def data_info_to_string(
     current_page = current_page or all_page
     data_str = await fn.watch_data_chats(
         data,
-        sep,
+        se.sep,
         q_string_per_page,
         current_page,
     )
@@ -125,7 +126,7 @@ async def chats_message_to_add(
     state: FSMContext,
     session: AsyncSession,
 ) -> None:
-    data_to_add = [i.strip() for i in message.text.split(sep) if i]
+    data_to_add = [i.strip() for i in message.text.split(se.sep) if i]
     data_state = await state.get_data()
 
     bot = await session.get(Bot, data_state["bot_id"])
