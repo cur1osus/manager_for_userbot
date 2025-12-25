@@ -102,6 +102,10 @@ async def set_default_commands(bot: Bot) -> None:
             BotCommand(command="ban", description="быстро добавить в бан"),
             BotCommand(command="reset", description="reset"),
             BotCommand(command="log", description="log"),
+            BotCommand(
+                command="clear_analyzed",
+                description="очистить историю анализа",
+            ),
         ]
     )
 

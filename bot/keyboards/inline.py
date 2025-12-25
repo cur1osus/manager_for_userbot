@@ -27,6 +27,9 @@ from .factories import (
 
 logger = logging.getLogger(__name__)
 
+_CONFIRM_YES = "clear_analyzed_yes"
+_CONFIRM_NO = "clear_analyzed_no"
+
 
 async def ik_main_menu(user: UserManager) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
@@ -339,4 +342,12 @@ async def ik_tool_for_pack_users() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="✍🏻", callback_data="send_messages")
     builder.adjust(1)
+    return builder.as_markup()
+
+
+async def ik_confirm_clear_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="Да, удалить", callback_data=_CONFIRM_YES)
+    builder.button(text="Нет, отмена", callback_data=_CONFIRM_NO)
+    builder.adjust(2)
     return builder.as_markup()
