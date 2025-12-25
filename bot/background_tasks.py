@@ -27,7 +27,6 @@ NOT_ACCEPTED_LAST_ID_KEY: Final[str] = f"{REDIS_PREFIX}:not_accepted:last_id"
 
 # Backward compatibility with legacy `key_builder()` keys.
 LEGACY_REDIS_PREFIX: Final[str] = "fsm:0:0:0:default"
-LEGACY_NOT_ACCEPTED_LAST_ID_KEY: Final[str] = f"{LEGACY_REDIS_PREFIX}:last_id"
 
 # Conservative delay between outgoing messages to the same user.
 SEND_DELAY_SECONDS: Final[float] = 1.0
@@ -148,15 +147,11 @@ async def send_not_accepted_posts(
     """Sends short notifications about `accepted=False` items to managers.
 
     To avoid spamming on first run, when `last_id` is missing we only send the latest
-    record (like the legacy implementation).
+    record.
     """
 
     async with sessionmaker() as session:
-        last_id = await _redis_get_int_fallback(
-            redis,
-            NOT_ACCEPTED_LAST_ID_KEY,
-            LEGACY_NOT_ACCEPTED_LAST_ID_KEY,
-        )
+        last_id = await _redis_get_int(redis, NOT_ACCEPTED_LAST_ID_KEY)
 
         query = (
             select(UserAnalyzed)
