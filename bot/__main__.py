@@ -106,6 +106,10 @@ async def set_default_commands(bot: Bot) -> None:
                 command="clear_analyzed",
                 description="очистить историю анализа",
             ),
+            BotCommand(
+                command="delete_sessions",
+                description="удалить все сессии",
+            ),
         ]
     )
 
