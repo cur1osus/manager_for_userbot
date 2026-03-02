@@ -97,7 +97,7 @@ cd "$PROJECT_DIR" || {
 }
 echo "pwd=$(pwd)"
 
-if ! command -v uv >/dev/null 2>&1; then
+if ! command -v /root/.local/bin/uv >/dev/null 2>&1; then
     echo "uv not found in PATH=$PATH"
     exit 1
 fi
@@ -106,7 +106,7 @@ fi
 unset VIRTUAL_ENV
 
 # Запускаем в фоне с помощью nohup
-nohup uv run -m bot "$SESSION_PATH" "$API_ID" "$API_HASH" \
+nohup /root/.local/bin/uv run -m bot "$SESSION_PATH" "$API_ID" "$API_HASH" \
     >> "$LOG_FILE" 2>&1 &
 
 # Сохраняем PID фонового процесса
