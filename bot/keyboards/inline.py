@@ -345,9 +345,12 @@ async def ik_tool_for_pack_users() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-async def ik_confirm_clear_keyboard() -> InlineKeyboardMarkup:
+async def ik_confirm_clear_keyboard(
+    yes_callback: str = _CONFIRM_YES,
+    no_callback: str = _CONFIRM_NO,
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text="Да, удалить", callback_data=_CONFIRM_YES)
-    builder.button(text="Нет, отмена", callback_data=_CONFIRM_NO)
+    builder.button(text="Да, удалить", callback_data=yes_callback)
+    builder.button(text="Нет, отмена", callback_data=no_callback)
     builder.adjust(2)
     return builder.as_markup()

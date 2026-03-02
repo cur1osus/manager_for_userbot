@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import TYPE_CHECKING
 
 from aiogram import F, Router
@@ -17,6 +18,7 @@ from bot.keyboards.factories import (
     BotFolderFactory,
 )
 from bot.keyboards.inline import ik_available_bots, ik_back, ik_bot_folder_list
+from bot.settings import se
 from bot.states.main import BotFolderState
 from bot.utils import fn
 
@@ -28,6 +30,53 @@ logger = logging.getLogger(__name__)
 
 FOLDER_BACK_PREFIX = "bots_folder_"
 LIST_BACK_TO = "bots"
+
+
+async def _cleanup_bots_without_sessions(
+    bots: list[Bot],
+    session: AsyncSession,
+) -> tuple[list[Bot], int]:
+    """Удаляет ботов без файлов сессий из базы данных.
+
+    Returns:
+        tuple: (список валидных ботов, количество удаленных ботов)
+    """
+    valid_bots = []
+    bots_to_delete = []
+
+    for bot in bots:
+        # Проверяем существование файла сессии
+        # path_session содержит полный путь или относительный путь к .session файлу
+        session_path = bot.path_session
+        if not session_path:
+            bots_to_delete.append(bot)
+            continue
+
+        # Добавляем расширение .session если его нет
+        if not session_path.endswith(".session"):
+            session_path = f"{session_path}.session"
+
+        # Проверяем существование файла
+        if os.path.exists(session_path):
+            valid_bots.append(bot)
+        else:
+            bots_to_delete.append(bot)
+            logger.warning(
+                "Сессия не найдена для бота %s (ID: %s), путь: %s",
+                bot.phone,
+                bot.id,
+                session_path,
+            )
+
+    # Удаляем ботов без сессий из базы
+    deleted_count = len(bots_to_delete)
+    if bots_to_delete:
+        for bot in bots_to_delete:
+            await session.delete(bot)
+        await session.commit()
+        logger.info("Удалено %s ботов без сессий из базы данных", deleted_count)
+
+    return valid_bots, deleted_count
 
 
 async def _show_bots(
@@ -60,6 +109,16 @@ async def _show_bots(
 
     add_to_folder_id = folder_id if folder_id is not None else None
     bots = list((await session.scalars(stmt)).all())
+
+    # Очищаем ботов без сессий
+    bots, deleted_count = await _cleanup_bots_without_sessions(bots, session)
+
+    # Уведомляем об удаленных ботах
+    if deleted_count > 0:
+        await query.answer(
+            f"Удалено {deleted_count} ботов (сессии не найдены)", show_alert=True
+        )
+
     await state.update_data(bots_back_to=actions_back_to)
 
     if not bots:

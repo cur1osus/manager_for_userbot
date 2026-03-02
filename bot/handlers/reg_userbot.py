@@ -176,7 +176,8 @@ async def process_enter_phone(
 
     await state.update_data(phone=message.text)
     data = await state.get_data()
-    api_id = data.get("api_id")
+    api_id_raw = data.get("api_id", "")
+    api_id = "".join(filter(str.isdigit, api_id_raw))
     api_hash = data.get("api_hash")
 
     if not api_id or not api_hash:
