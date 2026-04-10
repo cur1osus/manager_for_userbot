@@ -35,6 +35,9 @@ class Scheduler:
         if not jobs:
             return [], []
         done, pending = await asyncio.wait(jobs, *args, **kwargs)
+        for task in done:
+            if not task.cancelled() and task.exception():
+                logger.error("Scheduled job failed: %s", task.exception(), exc_info=task.exception())
         return done, pending
 
     async def run_all(self, delay_seconds: int = 0, *args, **kwargs):
@@ -48,6 +51,9 @@ class Scheduler:
         if not jobs:
             return [], []
         done, pending = await asyncio.wait(jobs, *args, **kwargs)
+        for task in done:
+            if not task.cancelled() and task.exception():
+                logger.error("Scheduled job failed: %s", task.exception(), exc_info=task.exception())
         return done, pending
 
     def get_jobs(self, tag: None | Hashable = None) -> list["Job"]:
@@ -416,7 +422,11 @@ class Job:
             logger.info("Cancelling job %s", self)
             return CancelJob
         logger.info("Running job %s", self)
-        ret = await self.job_func()
+        try:
+            ret = await self.job_func()
+        except Exception as exc:
+            logger.exception("Job %s raised an exception: %s", self, exc)
+            return None
         if isinstance(ret, CancelJob) or ret is CancelJob:
             self.scheduler.cancel_job(self)
             return ret
