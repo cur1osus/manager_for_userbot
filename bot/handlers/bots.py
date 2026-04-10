@@ -5,6 +5,7 @@ import os
 from typing import TYPE_CHECKING
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy import select
@@ -125,15 +126,19 @@ async def _show_bots(
         delete_folder_id = (
             folder_id if folder_id is not None and folder_id != 0 else None
         )
-        await query.message.edit_text(
-            text=empty_text,
-            reply_markup=await ik_available_bots(
-                [],
-                back_to=back_to,
-                delete_folder_id=delete_folder_id,
-                add_to_folder_id=add_to_folder_id,
-            ),
-        )
+        try:
+            await query.message.edit_text(
+                text=empty_text,
+                reply_markup=await ik_available_bots(
+                    [],
+                    back_to=back_to,
+                    delete_folder_id=delete_folder_id,
+                    add_to_folder_id=add_to_folder_id,
+                ),
+            )
+        except TelegramBadRequest as e:
+            if "message is not modified" not in str(e):
+                raise
         return
 
     for bot in bots:
@@ -149,14 +154,18 @@ async def _show_bots(
                 bot.jobs.append(Job(task=JobName.get_me_name.value))
 
     await session.commit()
-    await query.message.edit_text(
-        title,
-        reply_markup=await ik_available_bots(
-            bots,
-            back_to=back_to,
-            add_to_folder_id=add_to_folder_id,
-        ),
-    )
+    try:
+        await query.message.edit_text(
+            title,
+            reply_markup=await ik_available_bots(
+                bots,
+                back_to=back_to,
+                add_to_folder_id=add_to_folder_id,
+            ),
+        )
+    except TelegramBadRequest as e:
+        if "message is not modified" not in str(e):
+            raise
 
 
 @router.callback_query(F.data == "bots")
@@ -176,10 +185,14 @@ async def show_folders(
         )
     ).all()
 
-    await query.message.edit_text(
-        text="Папки",
-        reply_markup=await ik_bot_folder_list(list(folders)),
-    )
+    try:
+        await query.message.edit_text(
+            text="Папки",
+            reply_markup=await ik_bot_folder_list(list(folders)),
+        )
+    except TelegramBadRequest as e:
+        if "message is not modified" not in str(e):
+            raise
 
 
 @router.callback_query(F.data == "bots_all")

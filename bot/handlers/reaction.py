@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Final
 
 import msgpack
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, MessageReactionUpdated
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -40,20 +41,28 @@ async def catching_reaction(
         id_for_db = data_state.get(f"rmsg_{message.message_id}")
 
         if not id_for_db:
-            await message.bot.edit_message_reply_markup(
-                chat_id=message.chat.id,
-                message_id=message.message_id,
-                reply_markup=None,
-            )
+            try:
+                await message.bot.edit_message_reply_markup(
+                    chat_id=message.chat.id,
+                    message_id=message.message_id,
+                    reply_markup=None,
+                )
+            except TelegramBadRequest as e:
+                if "message is not modified" not in str(e):
+                    raise
             return
 
         user_a = await session.get(UserAnalyzed, id_for_db)
         if not user_a:
-            await message.bot.edit_message_reply_markup(
-                chat_id=message.chat.id,
-                message_id=message.message_id,
-                reply_markup=None,
-            )
+            try:
+                await message.bot.edit_message_reply_markup(
+                    chat_id=message.chat.id,
+                    message_id=message.message_id,
+                    reply_markup=None,
+                )
+            except TelegramBadRequest as e:
+                if "message is not modified" not in str(e):
+                    raise
             return
 
         d: dict = msgpack.unpackb(user_a.decision)
@@ -62,12 +71,16 @@ async def catching_reaction(
         userbot: UserBot = await user_a.awaitable_attrs.bot
         t = await fn.short_view(user_a.id, userbot.name, d, raw_msg)
 
-        await message.bot.edit_message_text(
-            text=t,
-            chat_id=message.chat.id,
-            message_id=message.message_id,
-            reply_markup=None,
-        )
+        try:
+            await message.bot.edit_message_text(
+                text=t,
+                chat_id=message.chat.id,
+                message_id=message.message_id,
+                reply_markup=None,
+            )
+        except TelegramBadRequest as e:
+            if "message is not modified" not in str(e):
+                raise
 
         del data_state[f"rmsg_{message.message_id}"]
         await state.set_data(data_state)
@@ -82,11 +95,15 @@ async def catching_reaction(
                 message.chat.id, "Сообщение устарело и не может быть удалено"
             )
     else:
-        await message.bot.edit_message_reply_markup(
-            chat_id=message.chat.id,
-            message_id=message.message_id,
-            reply_markup=await ik_tool_for_not_accepted_message(),
-        )
+        try:
+            await message.bot.edit_message_reply_markup(
+                chat_id=message.chat.id,
+                message_id=message.message_id,
+                reply_markup=await ik_tool_for_not_accepted_message(),
+            )
+        except TelegramBadRequest as e:
+            if "message is not modified" not in str(e):
+                raise
 
 
 @router.callback_query(F.data == "in_the_trash")
