@@ -5,6 +5,7 @@ import dataclasses
 from collections import deque
 import logging
 import os
+import re
 import signal
 import subprocess
 from pathlib import Path
@@ -33,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 PID_SUFFIX: Final[str] = ".pid"
 SESSION_SUFFIX: Final[str] = ".session"
-PID_FILE_WAIT_SECONDS: Final[float] = 1.0
+START_BOT_SCRIPT_TIMEOUT: Final[float] = 15.0
 
 
 @dataclasses.dataclass
@@ -193,6 +194,13 @@ class Function:
             q -= 1
 
     @staticmethod
+    def get_id_from_message(message: str) -> int | None:
+        match = re.search(r"id(\d+)", message)
+        if match:
+            return int(match.group(1))
+        return None
+
+    @staticmethod
     async def watch_processed_users(
         processed_users: list[dict[str, Any]],
         sep: str,
@@ -254,7 +262,7 @@ class Function:
                 logger.error("Bash script not found: %s", script_path)
                 return -1
 
-            await asyncio.create_subprocess_exec(
+            proc = await asyncio.create_subprocess_exec(
                 str(script_path),
                 path_session,
                 str(api_id),
@@ -267,7 +275,11 @@ class Function:
                 start_new_session=True,
             )
 
-            await asyncio.sleep(PID_FILE_WAIT_SECONDS)
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=START_BOT_SCRIPT_TIMEOUT)
+            except asyncio.TimeoutError:
+                logger.error("start_bot.sh timed out for %s", phone)
+                return -1
 
             path_pid = _pid_file(phone)
             pid = _read_pid(path_pid)
